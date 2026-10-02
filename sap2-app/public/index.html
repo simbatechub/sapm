@@ -617,7 +617,7 @@
     /* ---------- start ---------- */
     let HEALTH = null;
     async function findApi() {
-      for (const c of ['', 'http://localhost:3000']) {
+      for (const c of ['', 'http://localhost:3000', '']) {
         try {
           const r = await fetch(c + '/api/health'); let j = null; try { j = await r.json() } catch (e) { }
           if (r.ok && j && j.ok) { BASE = c; HEALTH = j; return 'ok' } if (r.status >= 500) return 'db'
