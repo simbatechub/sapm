@@ -1,0 +1,14 @@
+# Netlify: serves ./public as the website and runs the API as a Netlify Function.
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["express", "pg", "cors", "dotenv"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

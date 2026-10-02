@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="theme-color" content="#0b0b0c">
+  <link rel="icon" href="favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SAP2 · Simba TECHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0b0c;
+      --cd: #151517cc;
+      --cs: #151517;
+      --as: #0f0f10;
+      --ln: #26262a;
+      --tx: #f4f4f5;
+      --mu: #9a9aa2;
+      --tk: #3a3a40;
+      --in: #0d0d0e;
+      --fmc: #ffc499;
+      --hl: linear-gradient(135deg, #2a1200, #111);
+      --hp: #ffd9bf;
+      --ph: .16;
+      --lgbg: linear-gradient(135deg, #ff6a00, #000 65%);
+      --glow: radial-gradient(circle at 88% 7%, #9db4ff38 0, #9db4ff10 14%, transparent 32%), radial-gradient(1.5px 1.5px at 12% 18%, #fffb, transparent), radial-gradient(1px 1px at 30% 8%, #fff9, transparent), radial-gradient(1.5px 1.5px at 55% 22%, #fff9, transparent), radial-gradient(1px 1px at 72% 12%, #fffb, transparent), radial-gradient(1px 1px at 93% 32%, #fff8, transparent), radial-gradient(1.5px 1.5px at 8% 62%, #fff8, transparent), radial-gradient(1px 1px at 42% 78%, #fff7, transparent);
+      --or: #ff6a00;
+      --g: #22c55e;
+      --am: #f59e0b;
+      --rd: #ef4444;
+      box-sizing: border-box;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px)
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html {
+      scroll-padding-top: env(safe-area-inset-top, 0px)
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--tx);
+      font: 14px Inter, system-ui, sans-serif;
+      display: flex;
+      min-height: 100vh
+    }
+
+    h1,
+    h2,
+    .bn {
+      font-family: 'Bebas Neue', Impact, sans-serif;
+      letter-spacing: .03em;
+      font-weight: 400;
+      margin: 0
+    }
+
+    h1 {
+      font-size: 38px
+    }
+
+    aside {
+      width: 224px;
+      background: var(--as);
+      border-right: 1px solid var(--ln);
+      padding: 20px 12px;
+      z-index: 1;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0
+    }
+
+    .lg {
+      font-size: 34px;
+      line-height: 1;
+      color: var(--or)
+    }
+
+    .sb {
+      color: var(--mu);
+      font-size: 11px;
+      margin: 8px 0 18px
+    }
+
+    nav button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: 0;
+      color: var(--mu);
+      padding: 9px 12px;
+      border-radius: 8px;
+      font: 500 14px Inter;
+      cursor: pointer;
+      margin-bottom: 2px
+    }
+
+    nav button.on {
+      color: #fff;
+      background: linear-gradient(135deg, #ff6a00, #4a1e00)
+    }
+
+    nav button:hover {
+      color: var(--tx)
+    }
+
+    main {
+      flex: 1;
+      padding: 26px 30px;
+      min-width: 0;
+      position: relative;
+      z-index: 1
+    }
+
+    .p {
+      color: var(--mu);
+      margin: 2px 0 18px
+    }
+
+    .hero {
+      background: linear-gradient(120deg, #ff6a00, #6b2900 45%, #000);
+      border-radius: 16px;
+      padding: 22px 26px;
+      margin-bottom: 18px
+    }
+
+    .hero .p {
+      color: var(--hp);
+      margin: 2px 0 0
+    }
+
+    .gr {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, 1fr);
+      margin-bottom: 18px
+    }
+
+    .c {
+      background: var(--cd);
+      border: 1px solid var(--ln);
+      border-radius: 14px;
+      padding: 15px
+    }
+
+    .n {
+      font: 400 32px 'Bebas Neue';
+      letter-spacing: .03em
+    }
+
+    .l {
+      color: var(--mu);
+      font-size: 12px
+    }
+
+    .hl {
+      background: var(--hl);
+      border-color: #ff6a0066
+    }
+
+    .btn {
+      background: var(--cd);
+      border: 1px solid var(--ln);
+      color: var(--tx);
+      padding: 9px 15px;
+      border-radius: 10px;
+      font: 600 13px Inter;
+      cursor: pointer
+    }
+
+    .btn.on {
+      border-color: var(--or);
+      color: var(--or)
+    }
+
+    .btn.pr {
+      background: linear-gradient(135deg, #ff6a00, #b34300);
+      border: 0;
+      color: #fff
+    }
+
+    .btn:disabled {
+      opacity: .4
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 14px
+    }
+
+    .tw {
+      overflow-x: auto;
+      background: var(--cd);
+      border: 1px solid var(--ln);
+      border-radius: 14px
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 680px
+    }
+
+    th {
+      color: var(--mu);
+      font-weight: 500;
+      text-align: left;
+      font-size: 12px
+    }
+
+    th,
+    td {
+      padding: 10px 13px;
+      border-bottom: 1px solid var(--ln);
+      white-space: nowrap
+    }
+
+    tr:last-child td {
+      border: 0
+    }
+
+    .tk {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      border: 1.5px solid var(--tk);
+      background: none;
+      color: var(--mu);
+      cursor: pointer;
+      font: 700 15px Inter
+    }
+
+    .tk.on {
+      background: var(--or);
+      border-color: var(--or);
+      color: #fff
+    }
+
+    .b {
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600
+    }
+
+    .Paid,
+    .Present,
+    .Active {
+      background: #22c55e22;
+      color: var(--g)
+    }
+
+    .Pending,
+    .Scheduled {
+      background: #f59e0b22;
+      color: var(--am)
+    }
+
+    .Bad {
+      background: #ef444422;
+      color: var(--rd)
+    }
+
+    .fm {
+      background: #ff6a0018;
+      border: 1px dashed #ff6a0088;
+      border-radius: 10px;
+      padding: 9px 13px;
+      margin-bottom: 14px;
+      color: var(--fmc)
+    }
+
+    input,
+    select {
+      background: var(--in);
+      border: 1px solid var(--ln);
+      color: var(--tx);
+      border-radius: 9px;
+      padding: 9px 11px;
+      font: 14px Inter
+    }
+
+    .mod {
+      position: fixed;
+      inset: 0;
+      background: #000b;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9;
+      padding: 14px
+    }
+
+    .mod.s {
+      display: flex
+    }
+
+    .mod .c {
+      background: var(--cs);
+      width: 420px;
+      max-width: 100%;
+      max-height: 90vh;
+      overflow: auto
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 7px;
+      color: var(--mu)
+    }
+
+    dd {
+      margin: 0;
+      color: var(--tx)
+    }
+
+    .ts {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      background: var(--g);
+      color: #000;
+      padding: 11px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      display: none;
+      z-index: 30
+    }
+
+    #lg {
+      position: fixed;
+      inset: 0;
+      background: var(--lgbg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      padding: 16px
+    }
+
+    #lg .c {
+      position: relative;
+      background: var(--cs);
+      width: 360px;
+      max-width: 100%;
+      display: grid;
+      gap: 10px
+    }
+
+    .bt {
+      display: none
+    }
+
+    @media(max-width:820px) {
+      aside {
+        display: none
+      }
+
+      main {
+        padding: 16px 14px 88px
+      }
+
+      .gr {
+        grid-template-columns: 1fr 1fr
+      }
+
+      h1 {
+        font-size: 30px
+      }
+
+      .bt {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--as);
+        border-top: 1px solid var(--ln);
+        padding: 6px 2px calc(6px + env(safe-area-inset-bottom, 0px));
+        z-index: 5
+      }
+
+      .bt button {
+        flex: 1;
+        background: none;
+        border: 0;
+        color: var(--mu);
+        font: 500 11px Inter;
+        padding: 9px 0
+      }
+
+      .bt button.on {
+        color: var(--or)
+      }
+
+      .tk {
+        width: 42px;
+        height: 42px
+      }
+    }
+
+    .hero h1 {
+      color: #fff
+    }
+
+    :root[data-theme=light] {
+      --bg: #f6f3ee;
+      --cd: #ffffffd6;
+      --cs: #ffffff;
+      --as: #fffaf4;
+      --ln: #e7dfd4;
+      --tx: #1c1b1a;
+      --mu: #6d6760;
+      --tk: #cfc6ba;
+      --in: #fff;
+      --fmc: #8f3b00;
+      --hl: linear-gradient(135deg, #fff0e2, #ffdcbf);
+      --hp: #fff;
+      --ph: .2;
+      --lgbg: linear-gradient(135deg, #ff8a2b, #fff0dd 70%);
+      --glow: radial-gradient(circle at 90% 5%, #ffb84d80 0, #ffb84d26 16%, transparent 38%), radial-gradient(circle at 4% 100%, #ff6a0020, transparent 45%)
+    }
+
+    :root[data-theme=light] .hero {
+      background: linear-gradient(120deg, #ff6a00, #ff9a3c 60%, #ffc27a)
+    }
+
+    :root[data-theme=light] nav button.on {
+      color: #fff
+    }
+
+    .c,
+    .tw {
+      backdrop-filter: blur(6px)
+    }
+
+    body,
+    aside,
+    .c,
+    .tw,
+    input,
+    select,
+    .btn,
+    .fm {
+      transition: background-color .45s, color .45s, border-color .45s
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: url(bg.jpg) center/cover no-repeat;
+      opacity: var(--ph);
+      filter: grayscale(.2)
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: var(--glow)
+    }
+
+    #lg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url(bg.jpg) center/cover no-repeat;
+      opacity: .16
+    }
+
+    .logo {
+      display: block;
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 10px 12px
+    }
+
+    .logo img {
+      display: block;
+      width: 100%;
+      height: auto
+    }
+
+    .thm {
+      white-space: nowrap
+    }
+
+    .mh {
+      display: none
+    }
+
+    @media(max-width:820px) {
+      .mh {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px
+      }
+
+      .mh .logo {
+        width: 150px;
+        padding: 6px 8px
+      }
+    }
+  </style>
+  <script>(function () { var t = null; try { t = localStorage.getItem("sap2theme") } catch (e) { } if (!t) { var h = new Date().getHours(); t = (h >= 6 && h < 18) ? "light" : "dark" } document.documentElement.dataset.theme = t })()</script>
+</head>
+
+<body>
+  <div id="lg" style="display:none"><button class="btn thm" style="position:absolute;top:16px;right:16px"
+      onclick="toggleTheme()"></button>
+    <div class="c">
+      <div class="logo"><img src="logo.png" alt="Simba Tech"></div>
+      <div class="lg bn" style="font-size:44px;text-align:center">SAP2</div>
+      <div class="l" style="text-align:center">Enter the access key to continue</div>
+      <input id="pw" placeholder="Access key" type="password" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')login()">
+      <div class="l" id="le" style="color:var(--rd);min-height:16px;font-weight:600"></div><button class="btn pr"
+        id="lb" onclick="login()">Login</button>
+      <div class="l">Powered by Simba TECHub</div>
+    </div>
+  </div>
+  <aside>
+    <div class="logo"><img src="logo.png" alt="Simba Tech"></div>
+    <div class="sb">SAP2 · Staff Operations &amp; Payroll</div>
+    <nav id="nv"></nav><button class="btn thm" style="margin-top:auto;margin-bottom:8px"
+      onclick="toggleTheme()"></button><button class="btn" id="lo" style="display:none" onclick="logout()">Log
+      out</button>
+  </aside>
+  <main id="m"></main>
+  <div class="bt" id="bt"></div>
+  <div class="mod" id="mod">
+    <div class="c" id="mc"></div>
+  </div>
+  <div class="ts" id="ts"></div>
+  <script>
+    const $ = id => document.getElementById(id), fmt = n => '₦' + Math.round(n || 0).toLocaleString('en-NG'), DR = 20000;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], CAMPS = ['Airport Road Campus', 'Ekehuan Campus', 'Ewah Campus', 'Ogida Campus', 'Ugbowo Campus'];
+    const FR = { 'Once a week': 1, 'Twice a week': 2, 'Three times a week': 3 }, TY = { instructor: 'I', admin: 'A', both: 'B' };
+    const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const TODAY = ymd(new Date()), mon = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d) };
+    let BASE = '', KEY = sessionStorage.getItem('sap2key') || '', AUTH = false; const who = 'Mr Billy';
+    let STAFF = [], REC = [], PAY = [], PR = { rows: [] }, view = 'dash', ws = mon(), mo = TODAY.slice(0, 7), flt = 'All', q = '', sel = new Set();
+
+    /* ---------- day / night ---------- */
+    const themeLbl = () => document.documentElement.dataset.theme == 'dark' ? '☀️ Day mode' : '🌙 Night mode';
+    function applyTheme(t) {
+      document.documentElement.dataset.theme = t; try { localStorage.setItem('sap2theme', t) } catch (e) { }
+      document.querySelectorAll('.thm').forEach(b => b.textContent = themeLbl()); document.querySelector('meta[name=theme-color]').content = t == 'dark' ? '#0b0b0c' : '#f6f3ee'
+    }
+    function toggleTheme() { applyTheme(document.documentElement.dataset.theme == 'dark' ? 'light' : 'dark') }
+    const mh = () => `<div class="mh"><div class="logo"><img src="logo.png" alt="Simba Tech"></div><button class="btn thm" onclick="toggleTheme()">${themeLbl()}</button></div>`;
+
+    /* ---------- API layer ---------- */
+    async function api(path, o = {}) {
+      const r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', 'x-api-key': KEY }, body: o.body ? JSON.stringify(o.body) : undefined });
+      let j = null; try { j = await r.json() } catch (e) { }
+      if (r.status == 401) { KEY = ''; sessionStorage.removeItem('sap2key'); showLogin('Wrong or expired access key'); throw new Error('Wrong or expired access key') }
+      if (r.status >= 500) throw new Error(((j && j.error) || 'Server error') + '. Check the terminal running npm start (usually the DATABASE_URL in .env).');
+      if (r.status == 404 && !(j && j.error)) throw new Error('API not found (404) at ' + path + '. This page must be opened from the SAP2 server (npm start).');
+      if (!r.ok) throw new Error((j && j.error) || 'Request failed (' + r.status + ')');
+      return j
+    }
+    const normS = s => ({
+      id: s.id, n: esc(s.name), role: esc(s.role), e: esc(s.email), ph: esc(s.phone), bk: esc(s.bank), ac: esc(s.account_number), acl: s.account_len || 0, phl: s.phone_len || 0,
+      t: TY[s.staff_type], camps: (s.campuses || []).map(esc), skill: (s.skills || []).map(esc).join(', '), fr: FR[s.frequency] || 0, frt: esc(s.frequency),
+      rate: s.per_appearance_rate, sal: s.monthly_salary, active: s.active
+    });
+    const normA = a => ({ id: a.id, sid: a.staff_id, date: a.date, camp: esc(a.campus), rate: a.rate, by: esc(a.recorded_by), ts: String(a.recorded_at || '').slice(0, 16).replace('T', ' ') });
+    async function loadAll() {
+      const [s, a, p, pr] = await Promise.all([api('/staff'), api('/appearances'), api('/payments'), api('/payroll?month=' + mo)]);
+      STAFF = s.map(normS); REC = a.map(normA); PAY = p; PR = pr
+    }
+    async function refresh() { try { await loadAll(); render() } catch (e) { toast(e.message, 1) } }
+    async function setMo(m) { mo = m; try { PR = await api('/payroll?month=' + mo); render() } catch (e) { toast(e.message, 1) } }
+
+    /* ---------- helpers ---------- */
+    const add = (d, n) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) };
+    const wd = () => [0, 1, 2, 3, 4].map(k => add(ws, k));
+    const isI = s => s.t != 'A', isA = s => s.t != 'I', S = () => STAFF;
+    const recs = (id, m) => REC.filter(r => r.sid == id && (!m || r.date.startsWith(m)));
+    const rows = () => PR.rows.map(r => {
+      const ins = r.pay_type == 'instructor', s = STAFF.find(x => x.id == r.staff_id) || { id: r.staff_id, n: esc(r.name) };
+      return {
+        k: r.staff_id + ':' + (ins ? 'I' : 'A'), s, type: ins ? 'Instructor' : 'Administrative', pt: ins ? 'Per Appearance' : 'Monthly Salary', n: r.appearances || 0,
+        rate: ins ? r.rate : (r.salary_missing ? null : r.base), base: r.base, bonus: r.bonus, amt: r.amount, miss: !!r.salary_missing, paid: r.status == 'Paid'
+      }
+    });
+    const pd = r => r.paid;
+    const stat = (l, v, h) => `<div class="c ${h ? 'hl' : ''}"><div class="l">${l}</div><div class="n">${v}</div></div>`;
+    const bd = (t, c) => `<span class="b ${c || t}">${t}</span>`;
+    const tot = () => { const R = rows(), i = R.filter(r => r.type == 'Instructor').reduce((a, r) => a + r.amt, 0), a = R.filter(r => r.type != 'Instructor').reduce((x, r) => x + r.amt, 0), p = R.filter(pd).reduce((x, r) => x + r.amt, 0); return { i, a, t: i + a, p, pend: i + a - p, R } };
+    function toast(x, err) { const t = $('ts'); t.textContent = (err ? '✗ ' : '✓ ') + x; t.style.background = err ? 'var(--rd)' : 'var(--g)'; t.style.color = err ? '#fff' : '#000'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', err ? 3500 : 1900) }
+    function M(h) { $('mc').innerHTML = h; $('mod').classList.add('s') } function mcl() { $('mod').classList.remove('s') }
+
+    /* ---------- start ---------- */
+    let HEALTH = null;
+    async function findApi() {
+      for (const c of ['', 'http://localhost:3000']) {
+        try {
+          const r = await fetch(c + '/api/health'); let j = null; try { j = await r.json() } catch (e) { }
+          if (r.ok && j && j.ok) { BASE = c; HEALTH = j; return 'ok' } if (r.status >= 500) return 'db'
+        } catch (e) { }
+      }
+      return 'none'
+    }
+    function showLogin(msg) { $('lg').style.display = 'flex'; $('le').textContent = msg || ''; setTimeout(() => $('pw').focus(), 50) }
+    async function login() {
+      const k = $('pw').value.trim(), e = $('le'), btn = $('lb'); e.textContent = ''; if (!k) { e.textContent = 'Enter the access key.'; return }
+      btn.disabled = true; btn.textContent = 'Signing in…'; KEY = k;
+      try { await loadAll(); sessionStorage.setItem('sap2key', k); $('pw').value = ''; $('lg').style.display = 'none'; render() }
+      catch (err) { KEY = ''; e.textContent = err.message }
+      finally { btn.disabled = false; btn.textContent = 'Login' }
+    }
+    function logout() { KEY = ''; sessionStorage.removeItem('sap2key'); showLogin() }
+    function notice(title, msg) { shell(); $('m').innerHTML = mh() + `<div class="c" style="max-width:560px;margin:60px auto;text-align:center"><h2 style="font-size:26px">${title}</h2><p class="l" style="margin:12px 0 18px">${msg}</p><button class="btn pr" onclick="init()">Try again</button></div>` }
+    async function init() {
+      shell(); $('m').innerHTML = mh() + '<div class="p">Connecting…</div>'; const f = await findApi();
+      if (f == 'none') return notice('The SAP2 server is not running', 'Double-click start.bat in the sap2-app folder, wait until the black window says "SAP2 is running", then press Try again.');
+      if (f == 'db') return notice('Cannot reach the database', 'The SAP2 server is running but cannot reach Neon. Check DATABASE_URL in the .env file, then restart start.bat.');
+      if (HEALTH.misconfigured) return notice('This online copy is locked', 'No API_KEY is set on the host. Add an API_KEY environment variable in your hosting settings (for Netlify: Site configuration, Environment variables), redeploy, then press Try again.');
+      AUTH = !!HEALTH.auth; $('lo').style.display = AUTH ? 'block' : 'none';
+      if (AUTH && !KEY) { render(); return showLogin() }
+      try { await loadAll(); render() } catch (e) { if (AUTH && /access key/i.test(e.message)) { render(); return } notice('Something went wrong', esc(e.message)) }
+    }
+
+    /* ---------- navigation ---------- */
+    const NV = [['dash', 'Dashboard'], ['att', 'Appearance Tracker'], ['hist', 'Appearance History'], ['staff', 'All Staff'], ['inst', 'Instructors'], ['adm', 'Administrative Staff'], ['sched', 'Weekly Schedule'], ['pay', 'Payroll'], ['ph', 'Payment History'], ['rep', 'Reports']];
+    function go(v) { view = v; render() }
+    function shell() {
+      $('nv').innerHTML = NV.map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('');
+      $('bt').innerHTML = [['dash', 'Home'], ['staff', 'Staff'], ['att', 'Attendance'], ['pay', 'Payroll'], ['rep', 'More']].map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('')
+    }
+
+    /* ---------- appearances ---------- */
+    function cell(s, d) { const r = REC.filter(x => x.sid == s.id && x.date == d); return `<button class="tk ${r.length ? 'on' : ''}" onclick="rec(${s.id},'${d}')">${r.length ? '✓' : '—'}</button>` }
+    function rec(id, d, dup) {
+      const s = S().find(x => x.id == id), ex = REC.filter(r => r.sid == id && r.date == d), c = dup || s.camps[0];
+      if (ex.length && (!dup || ex.some(r => r.camp == c))) return M(`<h2 style="font-size:26px">Appearance Already Recorded</h2><p class="l">This instructor already has an appearance recorded for this date.</p><dl><dt>Instructor</dt><dd>${s.n}</dd><dt>Campus</dt><dd>${ex.map(r => r.camp).join(', ')}</dd><dt>Date</dt><dd>${d}</dd></dl>
+<div class="row" style="margin:16px 0 0;justify-content:flex-end"><button class="btn" onclick="mcl()">Cancel</button><button class="btn" onclick="delrec(${id},'${d}')">Remove Record</button></div>`);
+      M(`<h2 style="font-size:26px">Record Appearance</h2><dl><dt>Instructor</dt><dd>${s.n}</dd><dt>Campus</dt><dd><select id="cp">${s.camps.map(x => `<option ${x == c ? 'selected' : ''}>${x}</option>`).join('')}</select></dd><dt>Date</dt><dd>${d} (${DAYS[(new Date(d).getUTCDay() + 6) % 7]})</dd><dt>Rate</dt><dd>${fmt(s.rate)}</dd><dt>Payment generated</dt><dd><b style="color:var(--or)">${fmt(s.rate)}</b></dd></dl>
+<div class="row" style="margin:16px 0 0;justify-content:flex-end"><button class="btn" onclick="mcl()">Cancel</button><button class="btn pr" onclick="conf(${id},'${d}')">Confirm Appearance</button></div>`)
+    }
+    async function conf(id, d) {
+      const c = $('cp').value; if (REC.some(r => r.sid == id && r.date == d && r.camp == c)) { mcl(); return rec(id, d, c) }
+      try { await api('/appearances', { method: 'POST', body: { staff_id: +id, date: d, campus: c, recorded_by: who } }); mcl(); toast('Appearance Recorded Successfully'); await refresh() }
+      catch (e) { mcl(); toast(e.message, 1); await refresh() }
+    }
+    async function delrec(id, d) {
+      try { for (const r of REC.filter(x => x.sid == id && x.date == d)) await api('/appearances/' + r.id, { method: 'DELETE' }); mcl(); toast('Appearance removed'); await refresh() }
+      catch (e) { mcl(); toast(e.message, 1); await refresh() }
+    }
+
+    /* ---------- views ---------- */
+    function dash() {
+      const T = tot(), I = S().filter(s => isI(s) && s.active), ta = REC.filter(r => r.date == TODAY).length;
+      return `<div class="hero"><h1>Good morning, ${esc(who)}</h1><div class="p">Here's your SAP2 staff operations overview.</div></div>
+<div class="row"><button class="btn pr" style="padding:14px 22px;font-size:15px" onclick="go('att')">✓ Record Appearance</button><button class="btn" onclick="go('staff')">View Staff</button><button class="btn" onclick="go('pay')">₦ Process Payroll</button><button class="btn" onclick="go('rep')">View Reports</button></div>
+<div class="gr">${stat('Total Staff', STAFF.length)}${stat('Instructors', S().filter(isI).length)}${stat('Administrative Staff', S().filter(isA).length)}${stat("Today's Appearances", ta)}
+${stat('Instructor Payments', fmt(T.i))}${stat('Administrative Salaries', fmt(T.a))}${stat('Total Payroll', fmt(T.t), 1)}${stat('Pending Payments', fmt(T.pend))}</div>
+<div class="fm">Payroll for ${mo}: Instructor Payments (confirmed appearances × rate) + Administrative Salaries. Salaries can be edited per staff member and are stored in the database.</div>
+<h2 style="font-size:24px;margin-bottom:8px">Today's Instructor Activity</h2><div class="tw"><table><tr><th>Instructor</th><th>Campuses</th><th>Expected</th><th>Status</th><th>Payment</th></tr>${I.map(s => { const r = REC.filter(x => x.sid == s.id && x.date == TODAY); return `<tr><td><b>${s.n}</b></td><td>${s.camps.join(', ')}</td><td>${s.frt}</td><td>${bd(r.length ? 'Present' : 'Scheduled')}</td><td>${r.length ? fmt(r.reduce((a, x) => a + x.rate, 0)) : '—'}</td></tr>` }).join('')}</table></div>`
+    }
+    function att() {
+      const D = wd(), I = S().filter(s => isI(s) && s.active);
+      return `<h1>Appearance Tracker</h1><div class="p">Record daily instructor appearances and automatically calculate payments.</div><div class="fm"><b>Total Earnings = Confirmed Appearances × Rate</b> (default ${fmt(DR)}). Schedules give times per week, not fixed days, so any weekday can be ticked.</div>
+<div class="row"><button class="btn" onclick="ws=add(ws,-7);render()">← Prev</button><b>Week of ${ws}</b><button class="btn" onclick="ws=add(ws,7);render()">Next →</button></div>
+<div class="tw"><table><tr><th>Instructor</th><th>Expected/wk</th>${D.map((d, i) => `<th>${DAYS[i]}<br><span style="font-size:10px">${d.slice(5)}</span></th>`).join('')}<th>Total</th><th>Earnings</th></tr>${I.map(s => {
+        const n = D.filter(d => REC.some(r => r.sid == s.id && r.date == d)).length;
+        return `<tr><td><b>${s.n}</b></td><td>${s.fr}</td>${D.map(d => `<td>${cell(s, d)}</td>`).join('')}<td>${n}</td><td><b>${fmt(D.reduce((a, d) => a + REC.filter(r => r.sid == s.id && r.date == d).reduce((x, r) => x + r.rate, 0), 0))}</b></td></tr>`
+      }).join('')}</table></div>`
+    }
+    function hist() {
+      const L = [...REC].sort((a, b) => b.date.localeCompare(a.date)), N = id => (STAFF.find(s => s.id == id) || {}).n;
+      return `<h1>Appearance History</h1><div class="p">${L.length} recorded appearance(s).</div><div class="tw"><table><tr><th>Date</th><th>Instructor</th><th>Campus</th><th>Status</th><th>Rate</th><th>Recorded by</th><th>Timestamp</th></tr>${L.map(r => `<tr><td>${r.date}</td><td>${N(r.sid)}</td><td>${r.camp}</td><td>${bd('Present')}</td><td>${fmt(r.rate)}</td><td>${r.by}</td><td>${r.ts}</td></tr>`).join('') || '<tr><td colspan=7 class="l">No appearances recorded yet.</td></tr>'}</table></div>`
+    }
+    function issues(s) { const o = []; if (!/^\S+@\S+\.\S+$/.test(s.e)) o.push('Invalid email'); if (s.acl != 10) o.push('Account number is ' + s.acl + ' digits'); if (s.phl != 10) o.push('Phone digits: ' + s.phl); return o }
+    function staff(f) {
+      const L = S().filter(s => (f ? f(s) : flt == 'All' || (flt == 'Instructors' && isI(s)) || (flt == 'Administrative' && isA(s)) || (flt == 'Inactive' && !s.active)) && (s.n + s.ph + s.role).toLowerCase().includes(q.toLowerCase()));
+      return `<div class="row">${f ? '' : ['All', 'Instructors', 'Administrative', 'Inactive'].map(x => `<button class="btn ${flt == x ? 'on' : ''}" onclick="flt='${x}';render()">${x}</button>`).join('')}<input placeholder="Search" value="${esc(q)}" oninput="q=this.value;render();this.focus()"></div>
+<div class="tw"><table><tr><th>Name</th><th>Role</th><th>Phone</th><th>Payment</th><th>Rate / Salary</th><th>Status</th><th>Data check</th><th></th></tr>${L.map(s => { const is = issues(s); return `<tr><td><b>${s.n}</b></td><td>${s.t == 'I' ? 'Instructor' : s.t == 'B' ? s.role + ' + Instructor' : s.role}</td><td>${s.ph}</td><td>${s.t == 'A' ? 'Monthly Salary' : s.t == 'B' ? 'Both' : 'Per Appearance'}</td><td>${isI(s) ? fmt(s.rate) + '/appt' : ''} ${isA(s) ? (s.sal == null ? '<span class="l">Salary not set</span>' : fmt(s.sal)) : ''}</td><td>${bd(s.active ? 'Active' : 'Inactive', s.active ? 'Active' : 'Bad')}</td><td>${is.length ? bd(is.length + ' issue' + (is.length > 1 ? 's' : ''), 'Pending') : bd('OK', 'Paid')}</td><td><button class="btn" onclick="prof(${s.id})">View / Edit</button></td></tr>` }).join('')}</table></div>`
+    }
+    async function prof(id, rev) {
+      const s = S().find(x => x.id == id); let ac = s.ac;
+      if (rev) { try { ac = esc((await api('/staff/' + id + '?reveal=true')).account_number) } catch (e) { return toast(e.message, 1) } }
+      const R = recs(id, mo), n = R.length, earn = R.reduce((a, r) => a + r.rate, 0);
+      M(`<h2 style="font-size:26px">${s.n}</h2><div class="l" style="margin-bottom:10px">${s.role}${s.t == 'B' ? ' + Instructor' : ''}</div><dl><dt>Email</dt><dd>${s.e}</dd><dt>Phone</dt><dd>${s.ph}</dd><dt>Bank</dt><dd>${s.bk}</dd><dt>Account</dt><dd>${ac} <button class="btn" style="padding:2px 8px" onclick="prof(${id},${!rev})">${rev ? 'Hide' : 'Reveal'}</button></dd>
+${isI(s) ? `<dt>Campuses</dt><dd>${s.camps.join(', ')}</dd><dt>Skills</dt><dd>${s.skill}</dd><dt>Schedule</dt><dd>${s.frt}</dd><dt>${mo} appts</dt><dd>${n} · ${fmt(earn)}</dd><dt>Rate</dt><dd><input id="er" type="number" value="${s.rate}" style="width:120px"><div class="l" style="margin-top:4px">A new rate applies to future appearances only.</div></dd>` : ''}
+${isA(s) ? `<dt>Monthly salary</dt><dd><input id="es" type="number" placeholder="Not set" value="${s.sal == null ? '' : s.sal}" style="width:140px"></dd>` : ''}</dl>${issues(s).length ? `<p class="l" style="color:var(--am)">Check source data: ${issues(s).join('; ')}</p>` : ''}
+<div class="row" style="margin:14px 0 0;justify-content:flex-end"><button class="btn" onclick="tgl(${id})">${s.active ? 'Deactivate' : 'Reactivate'}</button><button class="btn" onclick="mcl()">Close</button><button class="btn pr" onclick="sve(${id})">Save</button></div>`)
+    }
+    async function sve(id) {
+      const b = {}; if ($('er')) b.per_appearance_rate = Math.max(0, Math.round(+$('er').value)) || DR; if ($('es')) b.monthly_salary = $('es').value === '' ? null : Math.max(0, Math.round(+$('es').value));
+      try { await api('/staff/' + id, { method: 'PATCH', body: b }); mcl(); toast('Saved'); await refresh() } catch (e) { toast(e.message, 1) }
+    }
+    async function tgl(id) { const s = S().find(x => x.id == id); try { await api('/staff/' + id, { method: 'PATCH', body: { active: !s.active } }); mcl(); toast(s.active ? 'Deactivated' : 'Reactivated'); await refresh() } catch (e) { toast(e.message, 1) } }
+    function sched() { return `<h1>Weekly Schedule</h1><div class="p">Campuses and how many times per week each instructor coaches.</div><div class="gr" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${CAMPS.map(c => `<div class="c"><h2 style="font-size:22px;color:var(--or)">${c.replace(' Campus', '')}</h2>${S().filter(s => isI(s) && s.active && s.camps.includes(c)).map(s => `<div style="padding:6px 0;border-top:1px solid var(--ln)"><b>${s.n}</b><div class="l">${s.frt}</div></div>`).join('')}</div>`).join('')}</div>` }
+
+    /* ---------- payroll ---------- */
+    const mv = d => { const [y, m] = mo.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + d, 1)); return x.toISOString().slice(0, 7) };
+    function pay() {
+      const T = tot(), ok = [...sel].filter(k => T.R.find(r => r.k == k && !pd(r) && r.amt > 0));
+      return `<h1>Payroll</h1><div class="row" style="margin-top:6px"><button class="btn" onclick="setMo(mv(-1))">←</button><b>${mo}</b><button class="btn" onclick="setMo(mv(1))">→</button></div>
+<div class="fm">Total = base pay (appearances × rate, or salary) + bonus you enter per staff for this month. Instructor ${fmt(T.i)} + Administrative ${fmt(T.a)} · Calculated ≠ paid: only "Confirm Payroll" marks Paid.</div>
+<div class="gr">${stat('Total Payroll', fmt(T.t), 1)}${stat('Instructor Payroll', fmt(T.i))}${stat('Administrative Payroll', fmt(T.a))}${stat('Paid / Pending', fmt(T.p) + ' / ' + fmt(T.pend))}</div>
+<div class="row"><button class="btn pr" ${ok.length ? '' : 'disabled'} onclick="cfp()">Process Selected (${ok.length})</button></div>
+<div class="tw"><table><tr><th></th><th>Staff</th><th>Type</th><th>Payment type</th><th>Appts</th><th>Rate/Salary</th><th>Bonus (₦, edit)</th><th>Total</th><th>Status</th></tr>${T.R.map(r => `<tr><td><input type="checkbox" ${sel.has(r.k) ? 'checked' : ''} ${pd(r) || r.amt == 0 ? 'disabled' : ''} onchange="tsel('${r.k}')"></td><td><b>${r.s.n}</b></td><td>${r.type}</td><td>${r.pt}</td><td>${r.type == 'Instructor' ? r.n : '—'}</td><td>${r.rate == null ? '<span class="l">Not set</span>' : fmt(r.rate)}</td><td><input type="number" min="0" step="1000" placeholder="0" value="${r.bonus || ''}" ${pd(r) ? 'disabled' : ''} style="width:110px" onchange="setB('${r.k}',this.value)"></td><td>${fmt(r.amt)}</td><td>${bd(pd(r) ? 'Paid' : r.amt ? 'Pending' : 'No amount', pd(r) ? 'Paid' : r.amt ? 'Pending' : 'Bad')}</td></tr>`).join('')}</table></div>`
+    }
+    async function setB(k, v) {
+      const [id, t] = k.split(':'); try { await api('/bonuses', { method: 'PUT', body: { staff_id: +id, pay_type: t == 'I' ? 'instructor' : 'admin', month: mo, amount: Math.max(0, +v || 0) } }); toast('Bonus saved') } catch (e) { toast(e.message, 1) }
+      try { PR = await api('/payroll?month=' + mo) } catch (e) { } render()
+    }
+    function tsel(k) { sel.has(k) ? sel.delete(k) : sel.add(k); render() }
+    function cfp() { const T = tot(), R = T.R.filter(r => sel.has(r.k) && !pd(r) && r.amt > 0); M(`<h2 style="font-size:26px">Confirm Payroll</h2><p>You are about to mark the selected staff payments as paid.</p><dl><dt>Selected</dt><dd>${R.length} staff</dd><dt>Total</dt><dd><b style="color:var(--or)">${fmt(R.reduce((a, r) => a + r.amt, 0))}</b></dd></dl><div class="row" style="margin:16px 0 0;justify-content:flex-end"><button class="btn" onclick="mcl()">Cancel</button><button class="btn pr" onclick="doPay()">Confirm</button></div>`) }
+    async function doPay() {
+      const items = tot().R.filter(r => sel.has(r.k) && !pd(r) && r.amt > 0).map(r => ({ staff_id: r.s.id, pay_type: r.type == 'Instructor' ? 'instructor' : 'admin' }));
+      try { const res = await api('/payroll/pay', { method: 'POST', body: { month: mo, items } }); sel.clear(); mcl(); toast('Payroll marked as paid (' + res.processed + ')'); await refresh() } catch (e) { mcl(); toast(e.message, 1) }
+    }
+    function ph() { return `<h1>Payment History</h1><div class="p">Every recorded payment.</div><div class="tw"><table><tr><th>Date</th><th>Staff</th><th>Type</th><th>Amount</th><th>Month</th><th>Status</th><th>Reference</th></tr>${PAY.map(p => `<tr><td>${esc(String(p.paid_at).slice(0, 10))}</td><td>${esc(p.name)}</td><td>${p.pay_type == 'instructor' ? 'Instructor' : 'Administrative'}</td><td>${fmt(p.amount)}</td><td>${esc(p.month)}</td><td>${bd('Paid')}</td><td>${esc(p.reference)}</td></tr>`).join('') || '<tr><td colspan=7 class="l">No payments yet.</td></tr>'}</table></div>` }
+    function rep() {
+      const T = tot(), I = T.R.filter(r => r.type == 'Instructor'), A = T.R.filter(r => r.type != 'Instructor');
+      return `<h1>Reports — ${mo}</h1><div class="row"><button class="btn" onclick="setMo(mv(-1))">←</button><button class="btn" onclick="setMo(mv(1))">→</button></div>
+<div class="gr">${stat('Total Staff', STAFF.length)}${stat('Appearances', I.reduce((a, r) => a + r.n, 0))}${stat('Total Payroll', fmt(T.t), 1)}${stat('Paid / Pending', fmt(T.p) + ' / ' + fmt(T.pend))}</div>
+<h2 style="font-size:22px;margin:6px 0">Instructor Report</h2><div class="tw"><table><tr><th>Instructor</th><th>Appearances</th><th>Avg weekly</th><th>Campuses</th><th>Earnings</th><th>Paid</th><th>Pending</th></tr>${I.map(r => `<tr><td>${r.s.n}</td><td>${r.n}</td><td>${(r.n / 4.3).toFixed(1)}</td><td>${(r.s.camps || []).length}</td><td>${fmt(r.amt)}</td><td>${fmt(pd(r) ? r.amt : 0)}</td><td>${fmt(pd(r) ? 0 : r.amt)}</td></tr>`).join('')}</table></div>
+<h2 style="font-size:22px;margin:16px 0 6px">Administrative Salary Report</h2><div class="tw"><table><tr><th>Staff</th><th>Role</th><th>Salary</th><th>Status</th><th>Paid</th><th>Outstanding</th></tr>${A.map(r => `<tr><td>${r.s.n}</td><td>${r.s.role}</td><td>${r.miss ? 'Not set' : fmt(r.amt)}</td><td>${bd(pd(r) ? 'Paid' : 'Pending')}</td><td>${fmt(pd(r) ? r.amt : 0)}</td><td>${fmt(pd(r) ? 0 : r.amt)}</td></tr>`).join('')}</table></div>`
+    }
+    function render() { shell(); $('m').innerHTML = mh() + ({ dash, att, hist, staff: () => `<h1>All Staff</h1><div class="p">${STAFF.length} people.</div>` + staff(), inst: () => `<h1>Instructors</h1><div class="p">Campuses, schedule and rates.</div>` + staff(isI), adm: () => `<h1>Administrative Staff</h1><div class="p">Monthly salaries. Edit via View / Edit if they change.</div>` + staff(isA), sched, pay, ph, rep }[view])() }
+    applyTheme(document.documentElement.dataset.theme); init();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,26 @@
+HOW TO RUN SAP2 (Simba TECHub)
+
+The app is a small server plus a web page. The page only works when the server is running.
+Opening index.html by double-clicking it, or Netlify / GitHub Pages / Claude's file preview
+will NOT work (you will see a "server is not running" message).
+On your own computer there is NO login: anyone using this computer sees everything, including staff bank details.
+
+WINDOWS
+1. Install Node.js (LTS) from https://nodejs.org  (one time).
+2. Unzip sap2-app.zip. Open the folder.
+3. Double-click  start.bat
+   (First time only it may ask for the Neon connection string: Neon console > project "sap2" >
+   Connect > copy the POOLED string that starts with postgresql:// and paste it.
+   If the zip already contains a .env file it will not ask.)
+4. Your browser opens http://localhost:3000 and goes straight into the app.
+5. Keep the black window open while you work. Close it to stop the app.
+
+MAC / LINUX
+Same steps, but run  ./start.sh  in a terminal inside the folder.
+
+NEXT TIME
+Just double-click start.bat again.
+
+PUTTING IT ONLINE (Netlify)
+See NETLIFY.md. The online copy always asks for an access key (API_KEY) so that staff bank
+details are not public. Deploy the whole folder with the Netlify CLI, not just the public folder.
