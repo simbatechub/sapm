@@ -55,11 +55,15 @@ test("office, KPI configuration without code changes + audit trail", async () =>
 });
 
 test("tasks: individual / office / multiple; staff submit, only management verifies; scoping", async () => {
-  const { ok, call, staff } = await setup();
+  const { ok, call, staff, store } = await setup();
   const ada = staff["Adelana Victor"], isi = staff["Isibor Blessing"], om = staff["Omotuemen Favour"];
   const t1 = await ok("POST", "/tasks", { body: { title: "Weekly content calendar", staff_ids: [ada.id], due_date: "2026-10-15", priority: "HIGH", expected_output: "Calendar link" } });
   const t2 = await ok("POST", "/tasks", { body: { title: "Office-wide tidy up", scope: "OFFICE", office_id: ada.office_id, due_date: "2026-10-25" } }); assert.equal(t2.assignees.length, 1);
   const t3 = await ok("POST", "/tasks", { body: { title: "Multi-person job", staff_ids: [ada.id, isi.id, om.id], due_date: "2026-10-18" } }); assert.equal(t3.assignees.length, 3);
+  { const rows = (await ok("GET", "/tasks")).filter((r) => r.task_id === t3.id); const ofs = { [ada.id]: ada.office_id, [isi.id]: isi.office_id, [om.id]: om.office_id };
+    for (const r of rows) assert.equal(r.office_id, ofs[r.staff_id]); // each row shows the assignee's own office
+    await store.update("admin_tasks", { id: t3.id }, { office_id: ada.office_id }); // legacy task stamped with one office
+    for (const r of (await ok("GET", "/tasks")).filter((r) => r.task_id === t3.id)) assert.equal(r.office_id, ofs[r.staff_id]); }
   assert.equal((await call("POST", "/tasks", { body: { title: "Bad", staff_ids: [staff["Larry"].id], due_date: "2026-10-18" } })).status, 400); // instructor-only
   assert.equal((await call("POST", "/tasks", { body: { title: "x", staff_ids: [ada.id], due_date: "2026-10-18" }, actor: staffActor(ada) })).status, 403);
   const A = staffActor(ada);
