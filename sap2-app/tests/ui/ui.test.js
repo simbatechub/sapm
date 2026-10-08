@@ -171,6 +171,19 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
   await step("dark and light themes both render the module", async () => {
     await page.evaluate(() => go("ap")); for (const t of ["dark", "light"]) { await page.evaluate(x => applyTheme(x), t); await page.waitForTimeout(200); await shot("16-theme-" + t); }
   });
+  await step("settings: staff attendance can be switched off for remote staff, everything adapts, and it can be switched back on", async () => {
+    const navs = async () => (await page.locator("aside nav button").allInnerTexts());
+    const toSettings = async () => { await page.evaluate(() => { PF.X.tab = "settings"; go("ap") }); await page.waitForSelector("#s_att"); await page.waitForTimeout(500) };
+    await toSettings(); ok(await page.locator("#s_att").isChecked(), "on by default"); ok((await navs()).includes("Staff Attendance"));
+    await page.locator("#s_att").uncheck(); await page.fill("#s_r", "Staff work remotely"); await page.locator("button", { hasText: "Save settings" }).click(); await page.waitForTimeout(900);
+    ok(!(await navs()).includes("Staff Attendance"), "menu item gone: " + (await navs()).join("|"));
+    ok((await navs()).includes("Meetings") && (await navs()).includes("Tasks"), "everything else still there");
+    await toSettings(); ok(!(await page.locator("#s_att").isChecked()), "stays off"); eq(await page.locator("#w_attendance").count(), 0, "no attendance weight box");
+    await page.locator(".pf-tabs button", { hasText: "Scoreboard" }).click(); await waitText("Productivity"); ok(!(await page.locator("table th", { hasText: /^Attendance$/ }).count()), "no attendance column"); await shot("19-attendance-off");
+    ok(!(await page.locator("aside nav button", { hasText: "Staff Attendance" }).count()));
+    await toSettings(); await page.locator("#s_att").check(); await page.fill("#s_r", "Back on"); await page.locator("button", { hasText: "Save settings" }).click(); await page.waitForTimeout(900);
+    ok((await navs()).includes("Staff Attendance"), "menu item back");
+  });
   await step("settings: access codes table; generating a code retires the old one", async () => {
     await page.evaluate(() => { PF.X.tab = "settings"; go("ap") }); await page.waitForSelector("text=Access codes (login page)"); await shot("18-access-codes");
     const txt = await text(); for (const n of ["Administrator", "Tech Operations Manager", "Social Media & Community Manager"]) ok(txt.includes(n), "row " + n); ok(txt.includes("Generate new admin code"));

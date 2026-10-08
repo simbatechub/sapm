@@ -261,6 +261,7 @@ const DEFAULT_SETTINGS = {
   unverified_alert_count: 5,
   kpi_missed_below_pct: 70,
   enforce_payroll_approval: true,
+  attendance_enabled: true, // set to false when staff work remotely: hides attendance everywhere and re-balances the other score weights
 };
 
 // Existing role text (lower-cased) -> office. suggested=true means "show to management, never apply automatically".

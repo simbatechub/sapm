@@ -21,6 +21,8 @@
   const bad = d => d && d.__error;
   const loading = () => '<div class="p">Loading…</div>';
   const errBox = d => `<div class="fm" style="border-color:var(--rd);color:var(--rd)">${e(d.__error)}</div>`;
+  let ATT = true; // staff attendance tracking (Settings > Staff attendance). Off when staff work remotely.
+  async function flags() { if (window.SP || typeof KEY === 'undefined' || !KEY || X.flagsFor === KEY) return; X.flagsFor = KEY; try { const d = await A('/settings'); const on = d.settings.attendance_enabled !== false; if (on !== ATT) { ATT = on; render() } } catch (err) { X.flagsFor = null } }
   async function act(fn, ok, after) {
     try { const r = await fn(); if (ok) toast(ok); if (after !== false) { X.c = {}; if (after) after(r); render(); } return r } catch (err) { toast(err.message, 1) }
   }
@@ -60,7 +62,7 @@
     const t = d.tasks;
     const tiles = [
       ['Administrative staff', d.staff_count], ['Average score', pc(d.average_score), 1], ['Tasks completed', t.completed], ['Tasks pending', t.pending], ['Overdue tasks', t.overdue], ['Awaiting verification', t.awaiting_verification],
-      ['Attendance rate', pc(d.attendance_rate)], ['Reports submitted', d.reports.submitted], ['Reports missing', d.reports.missing], ['Below payment line', d.below_30], ['On 50% pay', d.on_half_pay], ['Full pay', d.full_pay]
+      ...(ATT ? [['Attendance rate', pc(d.attendance_rate)]] : []), ['Reports submitted', d.reports.submitted], ['Reports missing', d.reports.missing], ['Below payment line', d.below_30], ['On 50% pay', d.on_half_pay], ['Full pay', d.full_pay]
     ];
     const exit = (d.exit_review || []).length ? `<div class="pf-exit"><b>EXIT / MANAGEMENT REVIEW REQUIRED</b><div class="pf-sub" style="margin:4px 0 8px">Score below the line for consecutive months. This is a flag only: nothing is changed automatically, management decides.</div>${d.exit_review.map(r => `<div><button class="pf-link" onclick="PF.prof(${r.staff_id})">${e(r.name)}</button> <span class="pf-mu">${e(r.office || '')}</span> ${r.label ? '· ' + e(r.label) : ''}</div>`).join('')}</div>` : '';
     const need0 = (d.needs_office || []).length ? `<div class="fm">${d.needs_office.length} administrative staff member(s) have no office yet, so their score cannot be fully calculated: ${d.needs_office.map(s => `<button class="pf-link" onclick="PF.assignOffice(${s.id})">${e(s.name)} (${e(s.role || '')})</button>`).join(', ')}</div>` : '';
@@ -72,8 +74,8 @@
   }
   function scoreTable(rows, mini) {
     if (mini) return tbl(['#', 'Staff', 'Office', 'Score', 'Band'], rows.map(r => `<tr class="pf-sel" onclick="PF.prof(${r.staff_id})"><td>${r.rank}</td><td><b>${e(r.name)}</b></td><td>${e(r.office || '—')}</td><td>${pc(r.final_score)}</td><td>${bandBadge(r)}</td></tr>`), 'No administrative staff.');
-    return tbl(['Rank', 'Staff', 'Office', 'Task', 'KPI', 'Attendance', 'Reports', 'Productivity', 'Teamwork', 'TOTAL', 'Payment', 'Status'],
-      rows.map(r => `<tr class="pf-sel" onclick="PF.prof(${r.staff_id})"><td>${r.rank}</td><td><b>${e(r.name)}</b>${r.exit_review_required ? ' <span class="b sbC">EXIT REVIEW</span>' : ''}</td><td>${e(r.office || '—')}</td><td>${pc(r.task)}</td><td>${pc(r.kpi)}</td><td>${pc(r.attendance)}</td><td>${pc(r.reports)}</td><td>${pc(r.productivity)}</td><td>${pc(r.teamwork)}</td>
+    return tbl(['Rank', 'Staff', 'Office', 'Task', 'KPI', ...(ATT ? ['Attendance'] : []), 'Reports', 'Productivity', 'Teamwork', 'TOTAL', 'Payment', 'Status'],
+      rows.map(r => `<tr class="pf-sel" onclick="PF.prof(${r.staff_id})"><td>${r.rank}</td><td><b>${e(r.name)}</b>${r.exit_review_required ? ' <span class="b sbC">EXIT REVIEW</span>' : ''}</td><td>${e(r.office || '—')}</td><td>${pc(r.task)}</td><td>${pc(r.kpi)}</td>${ATT ? `<td>${pc(r.attendance)}</td>` : ''}<td>${pc(r.reports)}</td><td>${pc(r.productivity)}</td><td>${pc(r.teamwork)}</td>
 <td><b>${pc(r.final_score)}</b>${bar(r.final_score)}</td><td>${payBadge(r)}<div class="pf-note">${fmt(r.recommended_pay)} of ${fmt(r.salary)}</div></td><td>${bandBadge(r)}<div>${stateBadge(r.state)}${r.incomplete ? ' <span class="b sbN" title="Some components have no data yet">Incomplete</span>' : ''}</div></td></tr>`), 'No administrative staff.', 'pf-tbl-small');
   }
   function pfScore() {
@@ -107,7 +109,7 @@ ${scoreTable(d.rows)}`;
     const cl = d.calc, s = d.staff, p = d.payroll || {}, st = d.state, locked = st === 'CLOSED';
     const exit = cl.exit_review_required ? `<div class="pf-exit"><b>EXIT / MANAGEMENT REVIEW REQUIRED</b> — ${e(cl.exit_review_label || '')}<div class="pf-note">No automatic action is taken. Record a decision below.</div></div>` : '';
     const warn = (cl.data_quality && cl.data_quality.warnings || []).length ? `<div class="fm">Data check: ${cl.data_quality.warnings.map(e).join(' ')}</div>` : '';
-    const comps = tbl(['Component', 'Weight', 'Score', 'Effective weight', 'Points', 'What was counted', ''], cl.components.map(c => `<tr><td><b>${COMP_LABEL[c.component] || e(c.label)}</b></td><td>${c.weight}%</td>
+    const comps = tbl(['Component', 'Weight', 'Score', 'Effective weight', 'Points', 'What was counted', ''], cl.components.filter(c => !c.hidden).map(c => `<tr><td><b>${COMP_LABEL[c.component] || e(c.label)}</b></td><td>${c.weight}%</td>
 <td>${c.raw_score === null ? '<span class="pf-mu">No data</span>' : pc(c.raw_score * 100)}${c.overridden ? ` <span class="b sbN" title="${e(c.override && c.override.reason || '')}">Adjusted (was ${pc(c.system_score * 100)})</span>` : ''}</td><td>${pc(c.effective_weight)}</td><td>${c.points === null ? '—' : (Math.round(c.points * 10) / 10)}</td><td class="pf-det wrap">${e(detTxt(c))}</td>
 <td>${locked || st === 'FINALIZED' ? '' : c.component === 'teamwork' ? `<button class="btn" onclick="PF.teamwork(${id})">Rate</button>` : `<button class="btn" onclick="PF.adjust(${id},'${c.component}')">Adjust</button>`}</td></tr>`), '', 'pf-tbl-small');
     const hist = tbl(['Month', 'Score', 'Band', 'Recommended', 'Approved', 'Finalized by'], (d.history || []).map(h => `<tr><td>${h.month}</td><td>${pc(h.final_score)}</td><td>${e(label(h.band))}</td><td>${fmt(h.recommended_pay)}</td><td>${h.approved_pay == null ? '—' : fmt(h.approved_pay)}</td><td>${e(h.created_by || '')}</td></tr>`), 'No finalized months yet.', 'pf-tbl-small');
@@ -185,7 +187,7 @@ ${exit}${warn}
     let d, dash; try { [d, dash] = await Promise.all([A('/offices/' + id), A(`/offices/${id}/dashboard?month=${X.pm}`)]) } catch (err) { return toast(err.message, 1) }
     const k = d.kpis.map(x => `<tr><td class="wrap"><b>${e(x.name)}</b>${x.auto_source ? `<div class="pf-note">Auto: ${e(label(x.auto_source))}</div>` : ''}</td><td>${e(label(x.measurement_type))}</td><td>${x.target == null ? '—' : x.target}</td><td>${x.weight}</td><td>${e(label(x.frequency))}</td><td>${x.active ? bd('Active') : bd('Off', 'sbD')}</td><td><button class="btn" onclick="PF.editKpi(${x.id},${id})">Edit</button></td></tr>`);
     MW(`<div class="row" style="justify-content:space-between;margin:0"><div><h2 style="font-size:28px">${e(d.name)}</h2><div class="l wrap">${e(d.purpose || '')}</div></div><button class="btn" onclick="mcl()">Close</button></div>
-<div class="pf-grid" style="margin-top:12px">${stat('Office score ' + X.pm, pc(dash.office_score), 1)}${stat('Tasks done', dash.tasks.completed + '/' + dash.tasks.total)}${stat('Overdue', dash.tasks.overdue)}${stat('Attendance', pc(dash.attendance_rate))}${stat('Reports missing', dash.reports.missing)}</div>
+<div class="pf-grid" style="margin-top:12px">${stat('Office score ' + X.pm, pc(dash.office_score), 1)}${stat('Tasks done', dash.tasks.completed + '/' + dash.tasks.total)}${stat('Overdue', dash.tasks.overdue)}${ATT ? stat('Attendance', pc(dash.attendance_rate)) : ''}${stat('Reports missing', dash.reports.missing)}</div>
 <h2 class="pf-h">Staff</h2>${tbl(['Staff', 'Score', 'Band'], dash.staff.map(s => `<tr class="pf-sel" onclick="PF.prof(${s.staff_id})"><td>${e(s.name)}</td><td>${pc(s.final_score)}</td><td>${e(label(s.band))}</td></tr>`), 'No staff assigned to this office.', 'pf-tbl-small')}
 <h2 class="pf-h">Responsibilities</h2><div class="c"><ol style="margin:0;padding-left:20px">${d.responsibilities.map(r => `<li style="margin:3px 0">${e(r.text)}</li>`).join('')}</ol><div class="row" style="margin:10px 0 0">${sbtn('Edit responsibilities', `PF.editResp(${id})`)}${sbtn('Edit office details', `PF.editOffice(${id})`)}</div></div>
 <h2 class="pf-h">KPIs <button class="btn" onclick="PF.editKpi(0,${id})">+ Add KPI</button></h2>${tbl(['KPI', 'Type', 'Target', 'Weight', 'Frequency', 'Status', ''], k, 'No KPIs.', 'pf-tbl-small')}<div class="pf-note">KPI weights are relative to each other; together the KPI component is capped at its configured weight in the final score.</div>`);
@@ -215,7 +217,7 @@ ${exit}${warn}
     const d = need('close:' + X.pm, () => A('/months/' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
     const blocks = d.checks.filter(c => c.severity === 'BLOCK'), warns = d.checks.filter(c => c.severity !== 'BLOCK');
     const closed = d.status === 'CLOSED';
-    return `${mnav()}<div class="fm">Closing a month <b>locks</b> its tasks, attendance, reports, KPI results and scores, and saves permanent history snapshots. A closed month can only be reopened by management with a recorded reason. Closing never pays anyone.</div>
+    return `${mnav()}<div class="fm">Closing a month <b>locks</b> its tasks, ${ATT ? 'attendance, ' : ''}reports, KPI results and scores, and saves permanent history snapshots. A closed month can only be reopened by management with a recorded reason. Closing never pays anyone.</div>
 <div class="row"><b>${X.pm}</b> ${statusBadge(d.status)}${closed ? sbtn('Reopen month', 'PF.reopenMonth()') : sbtn('Recalculate all', 'PF.calcAll()') + sbtn('Finalize all', 'PF.finAll()') + sbtn('Close month', 'PF.closeMonth()', 'pr')}${sbtn('Approve all recommended pay', 'PF.approveAll()')}</div>
 ${blocks.length ? `<h2 class="pf-h pf-bad">Must be fixed before closing (${blocks.length})</h2>${blocks.map(c => `<div class="pf-alert CRITICAL"><div><b>${e(c.staff || '')}</b> — ${e(c.message)}</div></div>`).join('')}` : '<div class="pf-ok" style="margin:8px 0">✓ Nothing is blocking this month.</div>'}
 ${warns.length ? `<h2 class="pf-h">Warnings (${warns.length})</h2>${warns.map(c => `<div class="pf-alert"><div><b>${e(c.staff || '')}</b> — ${e(c.message)}</div></div>`).join('')}` : ''}`;
@@ -247,7 +249,8 @@ ${tbl(['Who', 'Used for', 'Status', ''], [`<tr><td><b>Administrator</b></td><td>
     const d = need('settings', () => A('/settings')); if (!d) return loading(); if (bad(d)) return errBox(d);
     const s = d.settings;
     return accessSection() + `<div class="fm">These rules drive every score. Changes apply to scores that are not yet finalized; finalized and closed months keep the rules they were calculated with.</div>
-<h2 class="pf-h">Score weights (must add up to 100)</h2><div class="pf-grid">${Object.keys(WL).map(k => `<div class="c"><div class="l">${WL[k]}</div><input id="w_${k}" type="number" min="0" value="${s.weights[k]}" style="width:100%;margin-top:6px"></div>`).join('')}</div>
+<h2 class="pf-h">Staff attendance</h2><div class="c" style="max-width:640px"><label style="display:flex;gap:10px;align-items:center"><input id="s_att" type="checkbox" ${ATT ? 'checked' : ''} style="width:auto"> <span><b>Track staff attendance</b><span class="pf-note"> Turn off if your staff work remotely. The Staff Attendance page, attendance scores and attendance alerts are hidden, and the other score weights are shared out automatically. Nothing already recorded is deleted.</span></span></label></div>
+<h2 class="pf-h">Score weights (must add up to 100)</h2><div class="pf-grid">${Object.keys(WL).filter(k => ATT || k !== 'attendance').map(k => `<div class="c"><div class="l">${WL[k]}</div><input id="w_${k}" type="number" min="0" value="${s.weights[k]}" style="width:100%;margin-top:6px"></div>`).join('')}</div>
 <h2 class="pf-h">Payment bands</h2><div class="pf-sub">Score at or above "from" earns that share of salary. Include a band starting at 0.</div>
 ${tbl(['Band', 'Label', 'From score', 'Pays % of salary'], s.bands.map((b, i) => `<tr><td>${e(b.key)}</td><td><input id="bl_${i}" value="${e(b.label)}"></td><td><input id="bm_${i}" type="number" min="0" max="100" value="${b.min}" style="width:90px"></td><td><input id="bp_${i}" type="number" min="0" max="100" value="${b.pay_pct}" style="width:90px"></td></tr>`), '', 'pf-tbl-small')}
 <h2 class="pf-h">Rules</h2><div class="pf-fg" style="max-width:640px">
@@ -272,10 +275,11 @@ ${reqReason('s_r', 'Required')}</div><div class="row"><button class="btn pr" onc
   }
   async function saveSettings() {
     const d = X.c.settings; if (!d) return; const s = d.settings;
-    const weights = {}; Object.keys(WL).forEach(k => weights[k] = num(V('w_' + k)));
+    const weights = {}; Object.keys(WL).forEach(k => { if (document.getElementById('w_' + k)) weights[k] = num(V('w_' + k)); else weights[k] = (s.weights || {})[k] ?? 0 });
     const bands = s.bands.map((b, i) => ({ ...b, label: V('bl_' + i), min: num(V('bm_' + i)), pay_pct: num(V('bp_' + i)) }));
-    const body = { weights, bands, exit_review_below: num(V('s_exit')), exit_review_consecutive: num(V('s_cons')), kpi_weight_cap_pct: num(V('s_cap')), grace_minutes: num(V('s_gr')), late_task_penalty_pct: num(V('s_lt')), late_deliverable_penalty_pct: num(V('s_ld')), late_report_credit_pct: num(V('s_lr')), missing_component_policy: V('s_pol'), enforce_payroll_approval: VC('s_enf') };
+    const body = { weights, bands, exit_review_below: num(V('s_exit')), exit_review_consecutive: num(V('s_cons')), kpi_weight_cap_pct: num(V('s_cap')), grace_minutes: num(V('s_gr')), late_task_penalty_pct: num(V('s_lt')), late_deliverable_penalty_pct: num(V('s_ld')), late_report_credit_pct: num(V('s_lr')), missing_component_policy: V('s_pol'), enforce_payroll_approval: VC('s_enf'), attendance_enabled: VC('s_att') };
     await act(() => A('/settings', { method: 'PUT', body: { settings: body, reason: V('s_r') } }), 'Settings saved');
+    ATT = body.attendance_enabled; render();
   }
 
   /* ======================================================= MAIN "Administrative Performance" view ======================================================= */
@@ -381,8 +385,8 @@ ${tbl(['Date', 'Meeting', 'Type', 'Participants', 'Present', 'Late', 'Absent', '
     const ap = m.action_points || [];
     MW(`<div class="row" style="justify-content:space-between;margin:0"><div><h2 style="font-size:26px">${e(m.title)}</h2><div class="l">${m.meeting_date} ${e((m.meeting_time || '').slice(0, 5))} · ${e(m.location || '')} · ${e(label(m.meeting_type))}</div></div><button class="btn" onclick="mcl()">Close</button></div>
 ${m.agenda ? `<h2 class="pf-h">Agenda</h2><div class="c wrap">${e(m.agenda)}</div>` : ''}
-<h2 class="pf-h">Attendance</h2><div class="tw pf-tbl-small"><table><tr><th>Staff</th><th>Status</th><th>Arrival</th><th>Remark</th></tr>${m.attendance.map(a => `<tr><td>${e(a.staff_name)}</td><td>${selx('ms' + a.staff_id, [['PENDING', 'Pending'], ...['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'].map(x => [x, label(x)])], a.status)}</td><td><input id="ma${a.staff_id}" type="time" value="${e((a.arrival_time || '').slice(0, 5))}" style="width:110px"></td><td><input id="mr${a.staff_id}" value="${e(a.remark || '')}"></td></tr>`).join('')}</table></div>
-<div class="row" style="margin-top:10px"><button class="btn pr" onclick="PF.saveMeetAtt(${id})">Save attendance</button></div>
+${ATT ? `<h2 class="pf-h">Attendance</h2><div class="tw pf-tbl-small"><table><tr><th>Staff</th><th>Status</th><th>Arrival</th><th>Remark</th></tr>${m.attendance.map(a => `<tr><td>${e(a.staff_name)}</td><td>${selx('ms' + a.staff_id, [['PENDING', 'Pending'], ...['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'].map(x => [x, label(x)])], a.status)}</td><td><input id="ma${a.staff_id}" type="time" value="${e((a.arrival_time || '').slice(0, 5))}" style="width:110px"></td><td><input id="mr${a.staff_id}" value="${e(a.remark || '')}"></td></tr>`).join('')}</table></div>
+<div class="row" style="margin-top:10px"><button class="btn pr" onclick="PF.saveMeetAtt(${id})">Save attendance</button></div>` : ''}
 <h2 class="pf-h">Minutes & action points</h2><textarea id="mn" style="width:100%;min-height:90px" placeholder="Minutes / notes">${e(m.notes || '')}</textarea>
 <div class="pf-note" style="margin:8px 0 4px">Action points — one per line: <code>text | due date YYYY-MM-DD | assignee names separated by ;</code></div><textarea id="map" style="width:100%;min-height:90px">${e(ap.map(a => [a.text, a.due_date || '', (a.assignee_ids || []).map(i => (m.attendance.find(x => x.staff_id === i) || {}).staff_name).join('; ')].join(' | ')).join('\n'))}</textarea>
 <div class="row" style="margin-top:8px"><button class="btn" onclick="PF.saveMinutes(${id},false)">Save notes</button><button class="btn pr" onclick="PF.saveMinutes(${id},true)">Save & create tasks from action points</button></div>
@@ -464,7 +468,7 @@ ${d.status === 'SUBMITTED' ? `<div class="pf-fg" style="margin-top:14px">${fg('r
   }
 
   /* ======================================================= PERFORMANCE REPORTS ======================================================= */
-  const RT = [['monthly-performance', 'Monthly staff performance'], ['office-performance', 'Office performance'], ['attendance', 'Attendance'], ['task-completion', 'Task completion'], ['kpi', 'KPI'], ['payroll-performance', 'Payroll performance'], ['staff-history', 'Staff history (trend)'], ['at-risk', 'At-risk staff']];
+  const RT = [['monthly-performance', 'Monthly staff performance'], ['office-performance', 'Office performance'], ...(ATT ? [['attendance', 'Attendance']] : []), ['task-completion', 'Task completion'], ['kpi', 'KPI'], ['payroll-performance', 'Payroll performance'], ['staff-history', 'Staff history (trend)'], ['at-risk', 'At-risk staff']];
   function pr2() {
     const o = officeList(), key = `rep:${X.rtype}:${X.pm}:${X.off}:${X.stf}`;
     const d = need(key, () => A(`/performance-reports/${X.rtype}?month=${X.pm}${X.off ? '&office_id=' + X.off : ''}${X.stf ? '&staff_id=' + X.stf : ''}`));
@@ -493,10 +497,10 @@ ${tbl(d.columns.map(c => e(c.label)), d.rows.map(r => `<tr>${d.columns.map(c => 
     return `<h1>Administrative Staff</h1><div class="p">Salary, monthly performance and the pay recommendation. Click a name for the full performance page.</div>${mnav()}
 <div class="row"><input placeholder="Search" value="${esc(q)}" oninput="q=this.value;render();this.focus()"></div>
 ${!sb ? '<div class="p">Loading performance…</div>' : bad(sb) ? errBox(sb) : ''}
-<div class="tw"><table><tr><th>Name</th><th>Office</th><th>Salary</th><th>Score</th><th>Attendance</th><th>Tasks</th><th>Report</th><th>Payment recommendation</th><th>Status</th><th></th></tr>${L.map(s => {
+<div class="tw"><table><tr><th>Name</th><th>Office</th><th>Salary</th><th>Score</th>${ATT ? '<th>Attendance</th>' : ''}<th>Tasks</th><th>Report</th><th>Payment recommendation</th><th>Status</th><th></th></tr>${L.map(s => {
       const r = by.get(s.id);
       return `<tr><td><button class="pf-link" onclick="PF.prof(${s.id})">${s.n}</button><div class="pf-note">${s.role}${s.t == 'B' ? ' + Instructor' : ''}</div></td><td>${r ? e(r.office || 'No office') : '—'}${r && !r.office_id ? ` <button class="pf-link" onclick="PF.assignOffice(${s.id})">Assign</button>` : ''}</td><td>${s.sal == null ? '<span class="l">Not set</span>' : fmt(s.sal)}</td>
-<td>${r && r.has_data ? `<b>${pc(r.final_score)}</b> ${bandBadge(r)}` : '<span class="pf-mu">Not scored</span>'}</td><td>${r ? pc(r.attendance) : '—'}</td><td>${tk_(r)}</td><td>${rep(r)}</td><td>${r && r.has_data ? `${payBadge(r)} <span class="pf-note">${fmt(r.recommended_pay)}</span>` : '—'}${r && r.exit_review_required ? '<div><span class="b sbC">EXIT REVIEW REQUIRED</span></div>' : ''}</td>
+<td>${r && r.has_data ? `<b>${pc(r.final_score)}</b> ${bandBadge(r)}` : '<span class="pf-mu">Not scored</span>'}</td>${ATT ? `<td>${r ? pc(r.attendance) : '—'}</td>` : ''}<td>${tk_(r)}</td><td>${rep(r)}</td><td>${r && r.has_data ? `${payBadge(r)} <span class="pf-note">${fmt(r.recommended_pay)}</span>` : '—'}${r && r.exit_review_required ? '<div><span class="b sbC">EXIT REVIEW REQUIRED</span></div>' : ''}</td>
 <td>${bd(s.active ? 'Active' : 'Inactive', s.active ? 'Active' : 'Bad')}${r ? '<div>' + stateBadge(r.state) + '</div>' : ''}</td><td><button class="btn" onclick="prof(${s.id})">View / Edit</button> <button class="btn" onclick="PF.accessCode(${s.id})" title="Optional: a personal code for this one person, instead of the shared office code">Personal code</button></td></tr>`
     }).join('') || '<tr><td colspan="10" class="l">No administrative staff.</td></tr>'}</table></div>`;
   }
@@ -544,7 +548,7 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
     return `<h1>Hello, ${e(d.staff.name)}</h1><div class="p">${e(d.staff.office || 'No office assigned yet')} · ${e(d.staff.role || '')}</div>${mnav()}
 <div class="pf-2"><div class="c"><div class="l">Your score for ${X.pm} (so far)</div><div class="pf-big">${pc(cl.final_score)}</div><div style="margin:6px 0">${bandBadge({ band: cl.performance_band, band_label: cl.band_label, final_score: cl.final_score })} ${payBadge({ payment_percentage: cl.payment_percentage })}</div>${bar(cl.final_score)}<div class="pf-note" style="margin-top:6px">Live estimate. It becomes official when management finalizes the month.</div></div>
 <div class="c"><div class="l">Trend</div>${trendSvg(d.trend)}</div></div>
-<h2 class="pf-h">Where your points come from</h2>${tbl(['Component', 'Weight', 'Your score'], cl.components.map(c => `<tr><td>${COMP_LABEL[c.component]}</td><td>${c.weight}%</td><td>${c.raw_score === null ? '<span class="pf-mu">No data yet</span>' : pc(c.raw_score * 100)}</td></tr>`), '', 'pf-tbl-small')}
+<h2 class="pf-h">Where your points come from</h2>${tbl(['Component', 'Weight', 'Your score'], cl.components.filter(c => !c.hidden).map(c => `<tr><td>${COMP_LABEL[c.component]}</td><td>${c.weight}%</td><td>${c.raw_score === null ? '<span class="pf-mu">No data yet</span>' : pc(c.raw_score * 100)}</td></tr>`), '', 'pf-tbl-small')}
 ${(cl.data_quality && cl.data_quality.warnings || []).length ? `<div class="fm">${cl.data_quality.warnings.map(e).join(' ')}</div>` : ''}
 <h2 class="pf-h">My office responsibilities</h2><div class="c"><ul style="margin:0;padding-left:18px">${(d.responsibilities || []).map(r => `<li style="margin:3px 0">${e(r)}</li>`).join('')}</ul></div>
 <h2 class="pf-h">My KPIs</h2>${tbl(['KPI', 'Target', 'Frequency'], (d.kpis || []).map(k => `<tr><td class="wrap">${e(k.name)}</td><td>${k.target == null ? '—' : k.target}</td><td>${e(label(k.frequency))}</td></tr>`), 'No KPIs.', 'pf-tbl-small')}`;
@@ -587,7 +591,7 @@ ${(cl.data_quality && cl.data_quality.warnings || []).length ? `<div class="fm">
   /* ======================================================= wiring ======================================================= */
   window.XV = { ap, tk, aa, mt, wr, ok, pr2, adm: admPage, pay: payPage };
   window.PF = {
-    X, tab: t => { X.tab = t; render() }, mv: d => { X.pm = mPlus(X.pm, d); render() }, setM: v => { if (/^\d{4}-\d{2}$/.test(v)) { X.pm = v; render() } },
+    flags, att: () => ATT, X, tab: t => { X.tab = t; render() }, mv: d => { X.pm = mPlus(X.pm, d); render() }, setM: v => { if (/^\d{4}-\d{2}$/.test(v)) { X.pm = v; render() } },
     prof, recalc, finalize, reopenRv, doReopen, adjust, doAdjust, teamwork, doTeamwork, comment, doComment, decision, doDecision, approve, doApprove, calcAll, ack, assignOffice, doOffice,
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,

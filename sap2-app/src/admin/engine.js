@@ -189,7 +189,8 @@ function calculate(data, settingsIn, today) {
   const settings = mergeSettings(settingsIn);
   const { staff, month } = data;
   const t = scoreTasks(data.tasks || [], month, settings, today);
-  const a = scoreAttendance(data.attendance || [], month, settings);
+  const attOn = settings.attendance_enabled !== false; // off = staff work remotely: no attendance score, its weight is shared by the other components
+  const a = scoreAttendance(attOn ? data.attendance || [] : [], month, settings);
   const rp = scoreReports(data.reports || [], month, settings, today);
   const dv = scoreDeliverables(data.deliverables || [], month, settings, today);
   const auto = {
@@ -204,7 +205,7 @@ function calculate(data, settingsIn, today) {
   const comps = COMPONENTS.map((c) => {
     const overridden = overrides[c] !== undefined && overrides[c] !== null;
     const value = overridden ? clamp01(num(overrides[c]) / 100) : raw[c];
-    return { component: c, label: COMPONENT_LABELS[c], weight: num(settings.weights[c]), raw_score: value === null ? null : value, system_score: raw[c], overridden, override: overridden ? { value: num(overrides[c]) } : null, details: details[c] };
+    return { component: c, label: COMPONENT_LABELS[c], weight: c === "attendance" && !attOn ? 0 : num(settings.weights[c]), hidden: c === "attendance" && !attOn, raw_score: value === null ? null : value, system_score: raw[c], overridden, override: overridden ? { value: num(overrides[c]) } : null, details: details[c] };
   });
   const zero = settings.missing_component_policy === "ZERO";
   const live = comps.filter((c) => c.raw_score !== null);
@@ -219,7 +220,7 @@ function calculate(data, settingsIn, today) {
     c.points = c.points === null ? null : r2(c.points); c.effective_weight = r2(c.effective_weight);
   }
   final = wTotal ? r2(final) : 0;
-  const missingComps = comps.filter((c) => c.raw_score === null).map((c) => c.component);
+  const missingComps = comps.filter((c) => c.raw_score === null && !c.hidden).map((c) => c.component);
   const warnings = [];
   if (!data.office) warnings.push("Staff member has no office assigned: KPI score cannot be calculated.");
   if (missingComps.length) warnings.push(`No data yet for: ${missingComps.map((c) => COMPONENT_LABELS[c]).join(", ")}.`);
@@ -249,8 +250,8 @@ function computeAlerts(ctx, settingsIn, today) {
   const rpt = calc.components.find((c) => c.component === "reports").details;
   if (rpt.not_submitted) add("REPORT_MISSING", "WARNING", `${rpt.not_submitted} weekly report(s) missing for ${month}`);
   const at = calc.components.find((c) => c.component === "attendance").details;
-  if (at.attendance_rate !== null && at.attendance_rate < settings.attendance_alert_below_pct) add("ATTENDANCE_LOW", "WARNING", `attendance ${at.attendance_rate}% is below ${settings.attendance_alert_below_pct}%`);
-  if (at.late >= settings.repeated_lateness_count) add("REPEATED_LATENESS", "WARNING", `late ${at.late} times in ${month}`);
+  if (settings.attendance_enabled !== false && at.attendance_rate !== null && at.attendance_rate < settings.attendance_alert_below_pct) add("ATTENDANCE_LOW", "WARNING", `attendance ${at.attendance_rate}% is below ${settings.attendance_alert_below_pct}%`);
+  if (settings.attendance_enabled !== false && at.late >= settings.repeated_lateness_count) add("REPEATED_LATENESS", "WARNING", `late ${at.late} times in ${month}`);
   const tk = calc.components.find((c) => c.component === "task").details;
   if (tk.awaiting_verification >= settings.unverified_alert_count) add("UNVERIFIED_TASKS", "INFO", `${tk.awaiting_verification} submitted tasks are waiting for management verification`);
   const hasData = calc.components.some((c) => c.raw_score !== null);
@@ -275,7 +276,7 @@ function closingChecks(perStaff) {
     const tk = calc.components.find((c) => c.component === "task").details;
     if (tk.awaiting_verification) add("WARN", `${tk.awaiting_verification} task(s) not verified.`);
     const at = calc.components.find((c) => c.component === "attendance");
-    if (at.system_score === null) add("WARN", "No attendance recorded.");
+    if (!at.hidden && at.system_score === null) add("WARN", "No attendance recorded.");
     if (calc.data_quality.missing_kpis.length) add("WARN", `${calc.data_quality.missing_kpis.length} KPI(s) have no result.`);
     if (calc.components.find((c) => c.component === "teamwork").system_score === null) add("WARN", "No teamwork/professionalism rating.");
     if (!review || review.status === "DRAFT") add("BLOCK", "Score not finalized by management.");

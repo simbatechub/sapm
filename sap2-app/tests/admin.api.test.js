@@ -293,3 +293,19 @@ test("settings validation", async () => {
   const r = await ok("PUT", "/settings", { body: { settings: { enforce_payroll_approval: false }, reason: "Temporarily" } }); assert.equal(r.settings.enforce_payroll_approval, false);
   assert.equal((await ok("GET", "/audit", { query: { action: "SETTINGS_CHANGED" } })).length, 1);
 });
+
+test("attendance can be switched off in Settings: scores and month closing stop asking for it, and it can be switched back on", async () => {
+  const { ok, call, staff } = await setup();
+  const M = TODAY.slice(0, 7), sid = staff["Chidozie Collins Achusiogu"].id;
+  const before = await ok("GET", "/months/" + M);
+  assert.ok(before.checks.some((c) => /No attendance recorded/.test(c.message)), "on by default: attendance is asked for");
+  assert.equal((await call("PUT", "/settings", { body: { settings: { attendance_enabled: "no" }, reason: "x" } })).status, 400, "must be true/false");
+  const saved = await ok("PUT", "/settings", { body: { settings: { attendance_enabled: false }, reason: "Staff work remotely" } });
+  assert.equal(saved.settings.attendance_enabled, false);
+  const off = await ok("GET", "/months/" + M);
+  assert.ok(!off.checks.some((c) => /attendance/i.test(c.message)), "closing no longer mentions attendance");
+  const prof = await ok("GET", "/performance/" + sid, { query: { month: M } });
+  const at = prof.calc.components.find((c) => c.component === "attendance"); assert.equal(at.hidden, true); assert.equal(at.effective_weight, 0);
+  await ok("PUT", "/settings", { body: { settings: { attendance_enabled: true }, reason: "Back on" } });
+  assert.ok((await ok("GET", "/months/" + M)).checks.some((c) => /No attendance recorded/.test(c.message)), "switching back on restores it");
+});

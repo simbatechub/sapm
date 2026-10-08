@@ -171,3 +171,21 @@ test("defaults: seven offices from the manual with responsibilities and KPIs", (
   assert.deepEqual(OFFICES.map((o) => o.kpis.length), [9, 9, 9, 9, 10, 10, 12]);
   assert.equal(DEFAULT_SETTINGS.weights.task + DEFAULT_SETTINGS.weights.kpi + DEFAULT_SETTINGS.weights.attendance + DEFAULT_SETTINGS.weights.reports + DEFAULT_SETTINGS.weights.productivity + DEFAULT_SETTINGS.weights.teamwork, 100);
 });
+
+test("attendance switched off (remote staff): hidden, no attendance penalty or warnings, other weights re-balance to 100", () => {
+  const d = sample();
+  const on = E.calculate(d, {}, TODAY), off = E.calculate(d, { attendance_enabled: false }, TODAY);
+  const at = off.components.find((c) => c.component === "attendance");
+  assert.equal(at.hidden, true); assert.equal(at.weight, 0); assert.equal(at.effective_weight, 0); assert.equal(at.raw_score, null);
+  approx(off.components.reduce((x, c) => x + c.effective_weight, 0), 100, 0.05);
+  assert.ok(!off.data_quality.missing_components.includes("attendance"), "not reported as missing data");
+  assert.ok(!off.data_quality.warnings.some((w) => /Attendance/i.test(w)));
+  // attendance records that exist are ignored, never counted against the person
+  const withRecords = sample({ attendance: [{ date: TODAY.slice(0, 8) + "01", status: "ABSENT", event_type: "WORK" }] });
+  assert.equal(E.calculate(withRecords, { attendance_enabled: false }, TODAY).final_score, off.final_score);
+  // zero-policy does not shrink the score either
+  const z = E.calculate(d, { attendance_enabled: false, missing_component_policy: "ZERO" }, TODAY);
+  assert.ok(z.components.every((c) => c.component === "attendance" || c.effective_weight > 0));
+  approx(z.components.reduce((x, c) => x + c.effective_weight, 0), 100, 0.05);
+  assert.equal(on.components.find((c) => c.component === "attendance").hidden, false);
+});

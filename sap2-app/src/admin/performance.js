@@ -40,6 +40,7 @@ function validateSettings(p) {
   if (p.attendance_split) for (const k of ["daily", "meeting", "punctuality"]) if (!n(p.attendance_split[k] ?? 0)) return `attendance_split.${k} must be a number >= 0`;
   if (p.priority_weights) for (const k of ["LOW", "MEDIUM", "HIGH"]) if (!n(p.priority_weights[k] ?? 0)) return `priority_weights.${k} must be a number >= 0`;
   if (p.missing_component_policy && !["EXCLUDE", "ZERO"].includes(p.missing_component_policy)) return "missing_component_policy must be EXCLUDE or ZERO";
+  if (p.attendance_enabled !== undefined && typeof p.attendance_enabled !== "boolean") return "attendance_enabled must be true or false";
   if (p.enforce_payroll_approval !== undefined && typeof p.enforce_payroll_approval !== "boolean") return "enforce_payroll_approval must be true or false";
   return null;
 }
