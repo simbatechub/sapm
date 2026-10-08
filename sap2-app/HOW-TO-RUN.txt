@@ -3,7 +3,7 @@ HOW TO RUN SAP2 (Simba TECHub)
 The app is a small server plus a web page. The page only works when the server is running.
 Opening index.html by double-clicking it, or Netlify / GitHub Pages / Claude's file preview
 will NOT work (you will see a "server is not running" message).
-On your own computer there is NO login: anyone using this computer sees everything, including staff bank details.
+Sign in on the login page: Administrator (private admin code) or Staff (office code, then your name).
 
 WINDOWS
 1. Install Node.js (LTS) from https://nodejs.org  (one time).

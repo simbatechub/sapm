@@ -1,5 +1,7 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+types.setTypeParser(1082, (v) => v); // DATE columns come back as 'YYYY-MM-DD' text (no timezone shifts)
+types.setTypeParser(1700, (v) => parseFloat(v)); // NUMERIC columns come back as numbers
 
 // Accept a pasted "psql '...'" command or quoted value too: pull out the postgresql:// URL.
 const match = (process.env.DATABASE_URL || '').match(/postgres(?:ql)?:\/\/[^\s'"]+/);

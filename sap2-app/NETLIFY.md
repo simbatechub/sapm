@@ -6,7 +6,7 @@ server part (the API), which Netlify runs as a "Function". This project now incl
 Netlify CLI. Dragging only the `public` folder onto Netlify will not work.
 
 The online copy ALWAYS asks for an access key (API_KEY), because it is on the public internet and
-holds staff bank details. On your own computer (start.bat) there is still no login.
+holds staff bank details. Version 2 always asks for a sign-in (administrator code or staff office code), locally and online; API_KEY is now optional.
 
 ## Steps (Windows, about 5 minutes)
 1. Open a terminal in the `sap2-app` folder (VS Code: Terminal > New Terminal).

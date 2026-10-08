@@ -479,6 +479,8 @@
       background: var(--glow)
     }
 
+    body.out aside, body.out main, body.out .bt, body.out .mod { display: none !important }
+
     #lg::before {
       content: '';
       position: absolute;
@@ -487,6 +489,9 @@
       opacity: .16
     }
 
+    .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}.seg .btn{padding:11px 8px}
+    #lgb{display:grid;gap:10px}#lgb label{color:var(--mu);font-size:12px;margin-bottom:-6px}#lgb select,#lgb input{width:100%}
+    .lgl{background:none;border:0;color:var(--or);font:600 12px Inter;cursor:pointer;text-align:center;padding:2px}
     .logo {
       display: block;
       background: #1a1a1a;
@@ -523,6 +528,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="perf.css">
   <script>(function () { var t = null; try { t = localStorage.getItem("sap2theme") } catch (e) { } if (!t) { var h = new Date().getHours(); t = (h >= 6 && h < 18) ? "light" : "dark" } document.documentElement.dataset.theme = t })()</script>
 </head>
 
@@ -532,12 +538,11 @@
     <div class="c">
       <div class="logo"><img src="logo.png" alt="Simba Tech"></div>
       <div class="lg bn" style="font-size:44px;text-align:center">SAP2</div>
-      <div class="l" style="text-align:center">Enter the access key to continue</div>
-      <input id="pw" placeholder="Access key" type="password" autocomplete="current-password"
-        onkeydown="if(event.key==='Enter')login()">
-      <div class="l" id="le" style="color:var(--rd);min-height:16px;font-weight:600"></div><button class="btn pr"
-        id="lb" onclick="login()">Login</button>
-      <div class="l">Powered by Simba TECHub</div>
+      <div class="l" style="text-align:center">Sign in to continue</div>
+      <div class="seg" role="tablist"><button id="lgA" class="btn" onclick="lgRole('admin')">Administrator</button><button id="lgS" class="btn" onclick="lgRole('staff')">Staff</button></div>
+      <div id="lgb"></div>
+      <div class="l" id="le" role="alert" style="color:var(--rd);min-height:16px;font-weight:600"></div>
+      <div class="l" style="text-align:center">Powered by Simba TECHub</div>
     </div>
   </div>
   <aside>
@@ -560,7 +565,7 @@
     const FR = { 'Once a week': 1, 'Twice a week': 2, 'Three times a week': 3 }, TY = { instructor: 'I', admin: 'A', both: 'B' };
     const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const TODAY = ymd(new Date()), mon = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d) };
-    let BASE = '', KEY = sessionStorage.getItem('sap2key') || '', AUTH = false; const who = 'Mr Billy';
+    let BASE = '', KEY = sessionStorage.getItem('sap2key') || '', AUTH = true; const who = 'Mr Billy';
     let STAFF = [], REC = [], PAY = [], PR = { rows: [] }, view = 'dash', ws = mon(), mo = TODAY.slice(0, 7), flt = 'All', q = '', sel = new Set();
 
     /* ---------- day / night ---------- */
@@ -574,9 +579,11 @@
 
     /* ---------- API layer ---------- */
     async function api(path, o = {}) {
-      const r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', 'x-api-key': KEY }, body: o.body ? JSON.stringify(o.body) : undefined });
+      const sent = KEY + '|' + (window.SP ? window.SP.code : '');
+      const r = await fetch(BASE + '/api' + path, { method: o.method || 'GET', headers: Object.assign({ 'Content-Type': 'application/json', 'x-api-key': KEY }, window.SP ? (window.SP.mode == 'personal' ? { 'x-staff-id': window.SP.id, 'x-staff-code': window.SP.code } : { 'x-staff-id': window.SP.id, 'x-office-code': window.SP.code }) : {}), body: o.body ? JSON.stringify(o.body) : undefined });
       let j = null; try { j = await r.json() } catch (e) { }
-      if (r.status == 401) { KEY = ''; sessionStorage.removeItem('sap2key'); showLogin('Wrong or expired access key'); throw new Error('Wrong or expired access key') }
+      if (r.status == 401) { const m = (j && j.error) || 'Please sign in again'; if (sent === KEY + '|' + (window.SP ? window.SP.code : '')) { clearAuth(); showLogin(m) } throw new Error(m) } // a late reply to an old attempt must not sign out a newer sign-in
+      if (r.status == 429) throw new Error((j && j.error) || 'Too many attempts. Try again later.')
       if (r.status >= 500) throw new Error(((j && j.error) || 'Server error') + '. Check the terminal running npm start (usually the DATABASE_URL in .env).');
       if (r.status == 404 && !(j && j.error)) throw new Error('API not found (404) at ' + path + '. This page must be opened from the SAP2 server (npm start).');
       if (!r.ok) throw new Error((j && j.error) || 'Request failed (' + r.status + ')');
@@ -604,7 +611,8 @@
       const ins = r.pay_type == 'instructor', s = STAFF.find(x => x.id == r.staff_id) || { id: r.staff_id, n: esc(r.name) };
       return {
         k: r.staff_id + ':' + (ins ? 'I' : 'A'), s, type: ins ? 'Instructor' : 'Administrative', pt: ins ? 'Per Appearance' : 'Monthly Salary', n: r.appearances || 0,
-        rate: ins ? r.rate : (r.salary_missing ? null : r.base), base: r.base, bonus: r.bonus, amt: r.amount, miss: !!r.salary_missing, paid: r.status == 'Paid'
+        rate: ins ? r.rate : (r.salary_missing ? null : r.base), base: r.base, bonus: r.bonus, amt: r.amount, miss: !!r.salary_missing, paid: r.status == 'Paid',
+        aw: r.status == 'Awaiting approval', bs: r.base_salary, sc: r.performance_score, band: r.performance_band, rec: r.recommended_pay, apv: r.approved_pay, ps: r.perf_status, actual: r.actual_paid
       }
     });
     const pd = r => r.paid;
@@ -625,32 +633,66 @@
       }
       return 'none'
     }
-    function showLogin(msg) { $('lg').style.display = 'flex'; $('le').textContent = msg || ''; setTimeout(() => $('pw').focus(), 50) }
-    async function login() {
-      const k = $('pw').value.trim(), e = $('le'), btn = $('lb'); e.textContent = ''; if (!k) { e.textContent = 'Enter the access key.'; return }
-      btn.disabled = true; btn.textContent = 'Signing in…'; KEY = k;
-      try { await loadAll(); sessionStorage.setItem('sap2key', k); $('pw').value = ''; $('lg').style.display = 'none'; render() }
-      catch (err) { KEY = ''; e.textContent = err.message }
-      finally { btn.disabled = false; btn.textContent = 'Login' }
+    /* ---------- sign-in: Administrator (private admin code) or Staff (office code + your name) ---------- */
+    const LG = { role: 'admin', step: 1, offices: null, members: [], office: '', code: '', personal: false, err: '' };
+    function clearAuth() { KEY = ''; window.SP = null;['sap2key', 'sap2staff'].forEach(k => { try { sessionStorage.removeItem(k) } catch (e) { } }) }
+    function showLogin(msg) { LG.err = msg || ''; $('lg').style.display = 'flex'; lgRender(); if (LG.role == 'staff' && !LG.offices) loadOffices() }
+    function lgRole(r) { LG.role = r; LG.step = 1; LG.err = ''; LG.personal = false; lgRender(); if (r == 'staff' && !LG.offices) loadOffices() }
+    async function loadOffices() {
+      try { const r = await fetch(BASE + '/api/auth/offices'); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Could not load offices'); LG.offices = j; if (!LG.office && j[0]) LG.office = j[0].id } catch (e) { LG.err = e.message; LG.offices = [] }
+      lgRender();
     }
-    function logout() { KEY = ''; sessionStorage.removeItem('sap2key'); showLogin() }
+    function lgErr(m) { LG.err = m || ''; $('le').textContent = LG.err }
+    function lgRender() {
+      $('lgA').classList.toggle('on', LG.role == 'admin'); $('lgS').classList.toggle('on', LG.role == 'staff'); $('le').textContent = LG.err; let h = '';
+      if (LG.role == 'admin') h = `<label for="pw">Administrator access code</label><input id="pw" placeholder="ADMIN-XXXX-XXXX-XXXX" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"><button class="btn pr" id="lb" onclick="login()">Sign in as Administrator</button><div class="l" style="text-align:center">Private code for management only.</div>`;
+      else if (LG.personal) h = `<label for="lpid">Staff ID</label><input id="lpid" type="number" inputmode="numeric" placeholder="Your staff ID"><label for="lpc">Personal access code</label><input id="lpc" type="password" autocomplete="off" onkeydown="if(event.key==='Enter')staffPersonal()"><button class="btn pr" id="lb" onclick="staffPersonal()">Sign in</button><button class="lgl" onclick="LG.personal=false;lgRender()">Use my office code instead</button>`;
+      else if (LG.step == 1) h = `<label for="lof">Your office</label><select id="lof" onchange="LG.office=this.value">${(LG.offices || []).map(o => `<option value="${o.id}" ${String(o.id) == String(LG.office) ? 'selected' : ''}>${esc(o.name)}</option>`).join('') || '<option value="">Loading offices…</option>'}</select><label for="loc">Office access code</label><input id="loc" type="password" autocomplete="off" placeholder="e.g. TECH-XXXXX-XXXXX" onkeydown="if(event.key==='Enter')officeNext()"><button class="btn pr" id="lb" onclick="officeNext()">Continue</button><button class="lgl" onclick="LG.personal=true;lgRender()">I have a personal code instead</button>`;
+      else h = `<div class="l" style="text-align:center">Office code accepted. Choose your name.</div><label for="lnm">Your name</label><select id="lnm">${LG.members.map(m => `<option value="${m.id}">${esc(m.name)} (${esc(m.role || '')})</option>`).join('')}</select><button class="btn pr" id="lb" onclick="staffOffice()">Sign in</button><button class="lgl" onclick="LG.step=1;lgRender()">← Back</button>`;
+      $('lgb').innerHTML = h; setTimeout(() => { const f = $('pw') || $('loc') || $('lpid'); if (f) f.focus() }, 30)
+    }
+    function busy(on, txt) { const b = $('lb'); if (b) { b.disabled = on; if (txt) b.textContent = txt } }
+    async function login() {
+      const k = $('pw').value.trim(); if (!k) return lgErr('Enter the administrator access code.');
+      busy(true, 'Signing in…'); KEY = k; window.SP = null;
+      try { await loadAll(); sessionStorage.setItem('sap2key', k); LG.err = ''; $('lg').style.display = 'none'; $('lo').style.display = 'block'; render() }
+      catch (err) { KEY = ''; LG.err = err.message; $('lg').style.display = 'flex'; lgRender() }
+    }
+    async function officeNext() {
+      const code = $('loc').value.trim(), office = $('lof').value; if (!office || !code) return lgErr('Choose your office and enter its access code.');
+      busy(true, 'Checking…');
+      try {
+        const r = await fetch(BASE + '/api/auth/office', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_id: +office, code }) }); const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Wrong office code');
+        LG.office = office; LG.code = code; LG.members = j.members; LG.step = 2; LG.err = j.members.length ? '' : 'No staff are assigned to this office yet. Ask the administrator.'; lgRender()
+      } catch (err) { LG.err = err.message; lgRender() }
+    }
+    async function staffEnter(id, code, mode) {
+      window.SP = { id: String(id), code, mode }; KEY = '';
+      try { await api('/admin/me?month=' + TODAY.slice(0, 7)); sessionStorage.setItem('sap2staff', JSON.stringify(window.SP)); LG.err = ''; PF.X.pt = 'me'; PF.X.c = {}; $('lg').style.display = 'none'; $('lo').style.display = 'block'; render() }
+      catch (err) { window.SP = null; LG.err = err.message; $('lg').style.display = 'flex'; lgRender() }
+    }
+    function staffOffice() { const id = $('lnm').value; if (!id) return lgErr('Choose your name.'); busy(true, 'Signing in…'); staffEnter(id, LG.code, 'office') }
+    function staffPersonal() { const id = $('lpid').value.trim(), c = $('lpc').value.trim(); if (!id || !c) return lgErr('Enter your staff ID and personal code.'); busy(true, 'Signing in…'); staffEnter(id, c, 'personal') }
+    function logout() { clearAuth(); location.reload() }
     function notice(title, msg) { shell(); $('m').innerHTML = mh() + `<div class="c" style="max-width:560px;margin:60px auto;text-align:center"><h2 style="font-size:26px">${title}</h2><p class="l" style="margin:12px 0 18px">${msg}</p><button class="btn pr" onclick="init()">Try again</button></div>` }
     async function init() {
       shell(); $('m').innerHTML = mh() + '<div class="p">Connecting…</div>'; const f = await findApi();
       if (f == 'none') return notice('The SAP2 server is not running', 'Double-click start.bat in the sap2-app folder, wait until the black window says "SAP2 is running", then press Try again.');
       if (f == 'db') return notice('Cannot reach the database', 'The SAP2 server is running but cannot reach Neon. Check DATABASE_URL in the .env file, then restart start.bat.');
       if (HEALTH.misconfigured) return notice('This online copy is locked', 'No API_KEY is set on the host. Add an API_KEY environment variable in your hosting settings (for Netlify: Site configuration, Environment variables), redeploy, then press Try again.');
-      AUTH = !!HEALTH.auth; $('lo').style.display = AUTH ? 'block' : 'none';
-      if (AUTH && !KEY) { render(); return showLogin() }
-      try { await loadAll(); render() } catch (e) { if (AUTH && /access key/i.test(e.message)) { render(); return } notice('Something went wrong', esc(e.message)) }
+      $('lo').style.display = 'block';
+      if (window.SP) { try { await api('/admin/me?month=' + TODAY.slice(0, 7)); return render() } catch (e) { clearAuth(); return showLogin(e.message) } }
+      if (!KEY) { render(); return showLogin() }
+      try { await loadAll(); render() } catch (e) { if ($('lg').style.display == 'flex') { render(); return } notice('Something went wrong', esc(e.message)) }
     }
 
     /* ---------- navigation ---------- */
-    const NV = [['dash', 'Dashboard'], ['att', 'Appearance Tracker'], ['hist', 'Appearance History'], ['staff', 'All Staff'], ['inst', 'Instructors'], ['adm', 'Administrative Staff'], ['sched', 'Weekly Schedule'], ['pay', 'Payroll'], ['ph', 'Payment History'], ['rep', 'Reports']];
+    const NV = [['dash', 'Dashboard'], ['att', 'Appearance Tracker'], ['hist', 'Appearance History'], ['staff', 'All Staff'], ['inst', 'Instructors'], ['adm', 'Administrative Staff'], ['ap', 'Administrative Performance'], ['tk', 'Tasks'], ['aa', 'Staff Attendance'], ['mt', 'Meetings'], ['wr', 'Weekly Reports'], ['ok', 'Office KPIs'], ['pr2', 'Performance Reports'], ['sched', 'Weekly Schedule'], ['pay', 'Payroll'], ['ph', 'Payment History'], ['rep', 'Reports']];
     function go(v) { view = v; render() }
     function shell() {
       $('nv').innerHTML = NV.map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('');
-      $('bt').innerHTML = [['dash', 'Home'], ['staff', 'Staff'], ['att', 'Attendance'], ['pay', 'Payroll'], ['rep', 'More']].map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('')
+      $('bt').innerHTML = [['dash', 'Home'], ['att', 'Appearances'], ['ap', 'Performance'], ['pay', 'Payroll']].map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('') + `<button onclick="moreMenu()">More</button>`
     }
 
     /* ---------- appearances ---------- */
@@ -745,9 +787,12 @@ ${isA(s) ? `<dt>Monthly salary</dt><dd><input id="es" type="number" placeholder=
 <h2 style="font-size:22px;margin:6px 0">Instructor Report</h2><div class="tw"><table><tr><th>Instructor</th><th>Appearances</th><th>Avg weekly</th><th>Campuses</th><th>Earnings</th><th>Paid</th><th>Pending</th></tr>${I.map(r => `<tr><td>${r.s.n}</td><td>${r.n}</td><td>${(r.n / 4.3).toFixed(1)}</td><td>${(r.s.camps || []).length}</td><td>${fmt(r.amt)}</td><td>${fmt(pd(r) ? r.amt : 0)}</td><td>${fmt(pd(r) ? 0 : r.amt)}</td></tr>`).join('')}</table></div>
 <h2 style="font-size:22px;margin:16px 0 6px">Administrative Salary Report</h2><div class="tw"><table><tr><th>Staff</th><th>Role</th><th>Salary</th><th>Status</th><th>Paid</th><th>Outstanding</th></tr>${A.map(r => `<tr><td>${r.s.n}</td><td>${r.s.role}</td><td>${r.miss ? 'Not set' : fmt(r.amt)}</td><td>${bd(pd(r) ? 'Paid' : 'Pending')}</td><td>${fmt(pd(r) ? r.amt : 0)}</td><td>${fmt(pd(r) ? 0 : r.amt)}</td></tr>`).join('')}</table></div>`
     }
-    function render() { shell(); $('m').innerHTML = mh() + ({ dash, att, hist, staff: () => `<h1>All Staff</h1><div class="p">${STAFF.length} people.</div>` + staff(), inst: () => `<h1>Instructors</h1><div class="p">Campuses, schedule and rates.</div>` + staff(isI), adm: () => `<h1>Administrative Staff</h1><div class="p">Monthly salaries. Edit via View / Edit if they change.</div>` + staff(isA), sched, pay, ph, rep }[view])() }
-    applyTheme(document.documentElement.dataset.theme); init();
+    function moreMenu() { M('<h2 style="font-size:24px;margin-bottom:10px">Menu</h2>' + NV.map(([k, l]) => `<button class="btn ${view == k ? 'on' : ''}" style="display:block;width:100%;text-align:left;margin-bottom:6px" onclick="mcl();go('${k}')">${l}</button>`).join('') + '<button class="btn" style="display:block;width:100%;text-align:left" onclick="mcl();logout()">Log out</button>') }
+    function render() { if (!KEY && !window.SP) { document.body.classList.add('out'); $('nv').innerHTML = ''; $('bt').innerHTML = ''; $('m').innerHTML = ''; return } document.body.classList.remove('out'); if (window.PF && PF.portalOn()) { shell(); return PF.renderPortal() } shell(); const VW = Object.assign({}, window.XV || {}); $('m').innerHTML = mh() + (Object.assign({ dash, att, hist, staff: () => `<h1>All Staff</h1><div class="p">${STAFF.length} people.</div>` + staff(), inst: () => `<h1>Instructors</h1><div class="p">Campuses, schedule and rates.</div>` + staff(isI), adm: () => `<h1>Administrative Staff</h1><div class="p">Monthly salaries. Edit via View / Edit if they change.</div>` + staff(isA), sched, pay, ph, rep }, VW)[view])() }
+    applyTheme(document.documentElement.dataset.theme); 
   </script>
+  <script src="perf.js"></script>
+  <script>init();</script>
 </body>
 
 </html>

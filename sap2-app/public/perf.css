@@ -1,0 +1,64 @@
+/* Administrative Performance module — uses the SAP2 theme tokens (--or, --g, --am, --rd, --ln, --mu ...) */
+.pf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.pf-tabs .btn{padding:7px 13px}
+.pf-h{font-size:22px;margin:18px 0 8px}
+.pf-sub{color:var(--mu);font-size:12px;margin:2px 0 10px}
+.pf-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px}
+.pf-grid .c .n{font-size:30px}
+.pf-2{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+.pf-sel{cursor:pointer}.pf-sel:hover{background:#ff6a000d}
+.pf-link{background:none;border:0;color:var(--or);font:600 13px Inter;cursor:pointer;padding:0;text-align:left}
+.pf-link:hover{text-decoration:underline}
+.pf-bar{height:8px;border-radius:99px;background:var(--ln);overflow:hidden;min-width:70px}
+.pf-bar i{display:block;height:100%;border-radius:99px;background:var(--or)}
+.pf-bar.g i{background:var(--g)}.pf-bar.a i{background:var(--am)}.pf-bar.r i{background:var(--rd)}
+/* score / band badges: colour AND text, never colour alone */
+.sbE,.sbS{background:#22c55e22;color:var(--g)}
+.sbM{background:#3b82f622;color:#60a5fa}
+.sbN{background:#f59e0b22;color:var(--am)}
+.sbC,.sbX{background:#ef444422;color:var(--rd)}
+.sbD{background:#9a9aa222;color:var(--mu)}
+.pf-ok{color:var(--g)}.pf-warn{color:var(--am)}.pf-bad{color:var(--rd)}.pf-mu{color:var(--mu)}
+.pf-alert{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:9px 12px;border:1px solid var(--ln);border-left:4px solid var(--am);border-radius:10px;margin-bottom:8px;background:var(--cd)}
+.pf-alert.CRITICAL{border-left-color:var(--rd)}.pf-alert.INFO{border-left-color:#60a5fa}
+.pf-exit{border:1px solid var(--rd);background:#ef44441a;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.pf-exit b{color:var(--rd)}
+.mod .c.wide{width:960px}
+.pf-fg{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;align-items:center;margin:8px 0}
+.pf-fg label{color:var(--mu);font-size:12px}
+.pf-fg input,.pf-fg select,.pf-fg textarea{width:100%}
+textarea{background:var(--in);border:1px solid var(--ln);color:var(--tx);border-radius:9px;padding:9px 11px;font:14px Inter;min-height:70px;resize:vertical}
+.pf-chk{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px;max-height:170px;overflow:auto;border:1px solid var(--ln);border-radius:9px;padding:8px}
+.pf-chk label{display:flex;gap:6px;align-items:center;color:var(--tx);font-size:13px}
+.pf-kpi td input{width:90px}
+.pf-trend{width:100%;height:150px}
+.pf-trend text{fill:var(--mu);font:10px Inter}
+.pf-trend .ln{stroke:var(--or);stroke-width:2.5;fill:none}
+.pf-trend .dt{fill:var(--or)}.pf-trend .gl{stroke:var(--ln);stroke-width:1}
+.pf-trend .th{stroke:var(--rd);stroke-dasharray:4 3;stroke-width:1}
+.pf-big{font:400 54px 'Bebas Neue';line-height:1}
+.pf-det{font-size:11px;color:var(--mu);white-space:normal;max-width:360px}
+.pf-tbl-small table{min-width:480px}
+.pf-tbl-small th,.pf-tbl-small td{padding:7px 10px}
+td.wrap,.wrap{white-space:normal}
+.pf-note{font-size:12px;color:var(--mu)}
+.pf-print-head{display:none}
+@media(max-width:820px){
+  .pf-2{grid-template-columns:1fr}
+  .pf-fg{grid-template-columns:1fr}
+  .mod .c.wide{width:100%}
+  .pf-grid{grid-template-columns:repeat(2,1fr)}
+  .pf-tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+  .pf-tabs .btn{white-space:nowrap}
+}
+@media print{
+  aside,.bt,.mh,.row,.pf-tabs,.btn,.ts,#lg,.pf-noprint{display:none!important}
+  body{display:block;background:#fff;color:#000}
+  main,#m{padding:0!important;margin:0!important}
+  .c,.tw{background:#fff!important;border-color:#bbb!important;color:#000!important}
+  th,td{color:#000!important;border-color:#ccc!important}
+  .b{border:1px solid #888;background:#fff!important;color:#000!important}
+  .pf-print-head{display:block;margin-bottom:10px}
+  table{min-width:0;font-size:11px}
+  body::before,body::after,#m::before{display:none!important}
+}

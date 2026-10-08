@@ -4,9 +4,24 @@ const cors = require("cors");
 const crypto = require("crypto");
 const path = require("path");
 const { pool, query } = require("./db");
+const { pgStore } = require("./admin/store");
+const { ensureSchema } = require("./admin/migrate");
+const { createApi, mount } = require("./admin/api");
+const { createAuth } = require("./admin/auth");
+const P = require("./admin/performance");
+const { adminPayrollRow } = require("./admin/payroll");
+
+// Administrative performance module: tables are created/updated automatically (safe to repeat, never drops data).
+const adminStore = pgStore(pool, false, pool);
+let adminOk = false;
+const adminReady = ensureSchema(pool).then(
+  (r) => { adminOk = true; if (r.changed) console.log("Administrative performance tables are ready.", r.needs_office && r.needs_office.length ? `Needs an office: ${r.needs_office.join(", ")}` : ""); },
+  (e) => { console.error("Administrative performance setup failed:", e.message); throw e; },
+);
+adminReady.catch(() => {}); // reported on use; the rest of SAP2 keeps working
 
 const app = express();
-// No login, so only allow pages served from this computer (blocks other websites from reading the data).
+// Only allow pages served from this app (blocks other websites from reading the data); every API call also needs a sign-in.
 app.use(
   cors({
     origin: (o, cb) =>
@@ -24,7 +39,7 @@ const mask = (a) => (a ? "****" + String(a).slice(-4) : a);
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
 // ---- health (no auth) ----
-// Online (Netlify) copies must have API_KEY set; running on your own computer needs no login.
+// Everything except /api/health and the login helpers needs a sign-in: administrator access code, or a staff office code.
 const hosted = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
 app.get(
   "/api/health",
@@ -32,52 +47,28 @@ app.get(
     const { rows } = await query(
       "select current_database() as db, now() as time",
     );
-    res.json({
-      ok: true,
-      ...rows[0],
-      auth: !!process.env.API_KEY,
-      misconfigured: hosted && !process.env.API_KEY,
-    });
+    res.json({ ok: true, ...rows[0], auth: true, misconfigured: false });
   }),
 );
 
-// ---- optional API-key login (required automatically when hosted online) ----
-const fails = new Map();
+const auth = createAuth({ store: adminStore, ready: adminReady });
 const clientIp = (req) =>
   req.get("x-nf-client-connection-ip") ||
   (req.get("x-forwarded-for") || "").split(",")[0].trim() ||
   req.ip;
-app.use("/api", (req, res, next) => {
-  const key = process.env.API_KEY;
-  if (!key) {
-    if (hosted)
-      return res
-        .status(503)
-        .json({
-          error:
-            "This online copy has no API_KEY set, so it is locked. Add API_KEY in the hosting settings.",
-        });
-    return next(); // local use: no login
-  }
-  const ip = clientIp(req),
-    now = Date.now();
-  const f = fails.get(ip) || { n: 0, t: now };
-  if (now - f.t > 15 * 60 * 1000) {
-    f.n = 0;
-    f.t = now;
-  }
-  if (f.n >= 10)
-    return res
-      .status(429)
-      .json({ error: "Too many wrong keys. Try again in 15 minutes." });
-  const given = Buffer.from(req.get("x-api-key") || "");
-  const want = Buffer.from(key);
-  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
-    f.n++;
-    fails.set(ip, f);
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
+// ---- login page helpers (public) ----
+app.get("/api/auth/offices", wrap(async (_req, res) => { const r = await auth.offices(); res.status(r.status).json(r.body); }));
+app.post("/api/auth/office", wrap(async (req, res) => { const r = await auth.officeLogin(req.body, clientIp(req)); res.status(r.status).json(r.body); }));
+
+// ---- every other API route: sign-in required ----
+app.use("/api", async (req, res, next) => {
+  try {
+    const r = await auth.authenticate((h) => req.get(h), clientIp(req));
+    if (!r.ok) return res.status(r.status).json({ error: r.error });
+    if (r.staffOnly && !req.path.startsWith("/admin/")) return res.status(403).json({ error: "Staff accounts can only use the staff portal" });
+    req.actor = r.actor;
+    next();
+  } catch (e) { next(e); }
 });
 
 // ---- staff ----
@@ -306,6 +297,11 @@ async function payrollRows(month) {
     )
   ).rows;
   const out = [];
+  let reviews = new Map(), enforce = false;
+  if (adminOk) {
+    reviews = new Map((await adminStore.find("performance_reviews", { month })).map((x) => [x.staff_id, x]));
+    enforce = (await P.getSettings(adminStore)).enforce_payroll_approval;
+  }
   const push = (r, pay_type, base, extra) => {
     const bonus =
       bon.find((b) => b.staff_id === r.staff_id && b.pay_type === pay_type)
@@ -313,6 +309,8 @@ async function payrollRows(month) {
     const pay = paid.find(
       (x) => x.staff_id === r.staff_id && x.pay_type === pay_type,
     );
+    let status = pay ? "Paid" : base + bonus > 0 ? "Pending" : "No amount";
+    if (!pay && extra.awaiting_approval) status = "Awaiting approval"; // administrative pay needs management approval first
     out.push({
       staff_id: r.staff_id,
       name: r.name,
@@ -320,8 +318,9 @@ async function payrollRows(month) {
       base,
       bonus,
       amount: base + bonus,
-      status: pay ? "Paid" : base + bonus > 0 ? "Pending" : "No amount",
+      status,
       reference: pay?.reference || null,
+      actual_paid: pay ? pay.amount : null,
       ...extra,
     });
   };
@@ -332,10 +331,16 @@ async function payrollRows(month) {
         rate: r.per_appearance_rate,
       });
     if (r.staff_type !== "instructor")
-      push(r, "admin", r.monthly_salary || 0, {
+    {
+      const ap = adminPayrollRow({ enforce, salary: r.monthly_salary || 0, review: reviews.get(r.staff_id) });
+      push(r, "admin", ap.base, {
         role: r.role,
         salary_missing: r.monthly_salary == null,
+        awaiting_approval: ap.awaiting,
+        ...ap.extra,
+        perf_status: adminOk ? ap.extra.perf_status : "UNAVAILABLE",
       });
+    }
   }
   return out;
 }
@@ -413,6 +418,7 @@ app.post(
     const rows = await payrollRows(month);
     const client = await pool.connect();
     const done = [];
+    const skipped = [];
     try {
       await client.query("BEGIN");
       for (const it of items) {
@@ -420,11 +426,12 @@ app.post(
           (x) =>
             x.staff_id === Number(it.staff_id) && x.pay_type === it.pay_type,
         );
+        if (r && r.status === "Awaiting approval") { skipped.push({ staff_id: r.staff_id, name: r.name, reason: "Management must approve this month's performance-based pay first." }); continue; }
         if (!r || r.status !== "Pending") continue; // skip unknown, already paid, or zero
         const ref = `SAP2-${month.replace("-", "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
         await client.query(
-          `INSERT INTO payments (staff_id,pay_type,month,amount,reference) VALUES ($1,$2,$3,$4,$5)`,
-          [r.staff_id, r.pay_type, month, r.amount, ref],
+          `INSERT INTO payments (staff_id,pay_type,month,amount,reference,base_salary,performance_score,recommended_pay,approved_pay) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [r.staff_id, r.pay_type, month, r.amount, ref, r.base_salary ?? null, r.performance_score ?? null, r.recommended_pay ?? null, r.approved_pay ?? null],
         );
         done.push({
           staff_id: r.staff_id,
@@ -446,6 +453,7 @@ app.post(
       processed: done.length,
       total: done.reduce((a, d) => a + d.amount, 0),
       payments: done,
+      skipped,
     });
   }),
 );
@@ -493,6 +501,9 @@ app.get(
     });
   }),
 );
+
+// ---- administrative performance system (/api/admin/*) ----
+mount(app, createApi({ store: adminStore, ready: adminReady }));
 
 // ---- unknown API routes: clear JSON instead of an HTML 404 ----
 app.use("/api", (req, res) =>

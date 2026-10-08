@@ -1,13 +1,15 @@
 {
   "name": "sap2-backend",
-  "version": "1.0.0",
-  "description": "SAP2 (Simba TECHub) staff operations & payroll API on Neon Postgres",
+  "version": "2.0.0",
+  "description": "SAP2 (Simba TECHub) staff operations, payroll and administrative performance on Neon Postgres",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
-    "setup": "node src/migrate.js && node src/seed.js"
+    "setup": "node src/migrate.js && node src/seed.js",
+    "test": "node --test tests/engine.test.js tests/admin.api.test.js tests/auth.test.js",
+    "test:ui": "bash tests/ui/run.sh"
   },
   "dependencies": {
     "cors": "^2.8.5",

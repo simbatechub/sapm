@@ -1,0 +1,53 @@
+{
+  "note": "Salted scrypt hashes only. The codes themselves are NOT stored anywhere in this project.",
+  "codes": [
+    {
+      "key": "ADMIN",
+      "scope": "ADMIN",
+      "salt": "97758379d1ebfdd6efcc086952c52af2",
+      "hash": "51b7ff850ef38e7c6cc977a98a99124e069a67ad4480be2074a4f890c3f5d455"
+    },
+    {
+      "key": "OFFICE:TECH_OPS",
+      "scope": "OFFICE",
+      "salt": "a727fb46ef8e28f99b94539126811229",
+      "hash": "956f31f8ac007018f290bae8bd3346e0eafe3684f1efcb076f5ef97e0451f527"
+    },
+    {
+      "key": "OFFICE:ORPI",
+      "scope": "OFFICE",
+      "salt": "944d5cfa3e651ad18b323c2051e271b1",
+      "hash": "ee5a17eaca70c090c7ee20c3abbb93b5d5b2dcfa3ae40759128e0b935c35db26"
+    },
+    {
+      "key": "OFFICE:CREATIVE_DIRECTOR",
+      "scope": "OFFICE",
+      "salt": "88177106ee7d0ce03910aa3d7e4de4ba",
+      "hash": "225039bdc891ccff3bae77e16b9886b4e055c2ca2f407ae738e3b5b7c425bb5f"
+    },
+    {
+      "key": "OFFICE:CONTENT_CREATOR",
+      "scope": "OFFICE",
+      "salt": "44c02a232e129a908c4f17d62b2f65bf",
+      "hash": "7305e79dd56f6236937a7d1d98e5e250634723863a0e414117fff9bac52f54f7"
+    },
+    {
+      "key": "OFFICE:PROJECT_MANAGER",
+      "scope": "OFFICE",
+      "salt": "9a2ec32af67cf9910d322b9c3911526b",
+      "hash": "534157bd189a022f36b693dd0d299bbe384977b86cb13cacc086abcf6026b06b"
+    },
+    {
+      "key": "OFFICE:PERSONAL_ASSISTANT",
+      "scope": "OFFICE",
+      "salt": "bf148c655bdd9dc2989c85dad3788871",
+      "hash": "d4e9b9a7feecaf321df82fedadbfd3ee922551cd5faf57f4ffdf70dacb6c9834"
+    },
+    {
+      "key": "OFFICE:SOCIAL_MEDIA",
+      "scope": "OFFICE",
+      "salt": "f83aa3e086247db62e750275114127ae",
+      "hash": "96104e2bb008b20a3f61ebb83fe4dfc3c514cfa2a04a76d56cefbaef73b4d05c"
+    }
+  ]
+}
