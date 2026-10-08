@@ -4,8 +4,8 @@
     {
       "key": "ADMIN",
       "scope": "ADMIN",
-      "salt": "97758379d1ebfdd6efcc086952c52af2",
-      "hash": "51b7ff850ef38e7c6cc977a98a99124e069a67ad4480be2074a4f890c3f5d455"
+      "salt": "0789a4743fe3389a33581599193f56c1",
+      "hash": "161cdd7c0981c81748efa972b2710a34fb395097bb8c548adcd7b94048292426"
     },
     {
       "key": "OFFICE:TECH_OPS",
