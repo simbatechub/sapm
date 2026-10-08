@@ -47,6 +47,9 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     ok(await page.locator("#lg").isVisible(), "login visible"); const t = await page.locator("#lg").innerText(); ok(/Administrator/.test(t) && /Staff/.test(t));
     const r = await fetch(BASE + "/api/staff"); eq(r.status, 401, "API must refuse without a sign-in"); eq((await fetch(BASE + "/api/admin/dashboard?month=" + MONTH)).status, 401, "admin API must refuse");
     ok(!(await page.locator("aside").isVisible()), "sidebar must be hidden on the login page"); ok(!(await page.locator("main").isVisible()), "page content hidden"); ok((await page.locator("#nv").innerHTML()) === "", "no menu items rendered before sign-in");
+    const hr = await fetch(BASE + "/"); const csp = hr.headers.get("content-security-policy") || "";
+    ok(/frame-ancestors 'none'/.test(csp) && /default-src 'self'/.test(csp), "CSP sent"); eq(hr.headers.get("x-content-type-options"), "nosniff"); eq(hr.headers.get("x-frame-options"), "DENY");
+    eq((await fetch(BASE + "/api/health")).headers.get("cache-control"), "no-store", "API responses are never cached");
     await shot("00-login");
   });
   await step("administrator: wrong code refused, private code accepted", async () => {

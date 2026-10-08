@@ -96,3 +96,16 @@ test("access-code routes are management-only", async () => {
   for (const [m, p] of [["GET", "/access"], ["POST", "/admin-code"], ["POST", `/offices/${id}/office-code`]]) { assert.equal((await call(m, p, S)).status, 403, p); assert.equal((await call(m, p, M)).status, 200, p); }
   const a = (await store.find("performance_audit_logs")).map((x) => x.action); assert.ok(a.includes("ADMIN_ACCESS_CODE_CREATED") && a.includes("OFFICE_ACCESS_CODE_CREATED"));
 });
+
+test("guessing with a different faked address each time still hits a ceiling, then recovers", async () => {
+  let t = 5_000_000; const { auth, admin, offices, staff, H } = await setup({ now: () => t });
+  for (let i = 0; i < 60; i++) assert.equal((await auth.authenticate(H({ "x-api-key": "GUESS-" + i }), "10.0.0." + i)).status, 401, "each fake address is fresh, so still just 'wrong'");
+  assert.equal((await auth.authenticate(H({ "x-api-key": "GUESS-X" }), "10.0.1.1")).status, 429, "the 61st guess is refused whatever its address");
+  assert.equal((await auth.authenticate(H({ "x-api-key": admin }), "10.0.1.2")).status, 429, "the target pauses for everyone");
+  t += 15 * 60 * 1000 + 1; assert.equal((await auth.authenticate(H({ "x-api-key": admin }), "10.0.1.3")).ok, true, "recovers after 15 minutes");
+  // one office's code being guessed does not pause the other offices
+  const tech = offices.get("Tech Operations Manager"), pm = offices.get("Project Manager");
+  for (let i = 0; i < 60; i++) await auth.officeLogin({ office_id: tech.id, code: "n" + i }, "11.0.0." + i);
+  assert.equal((await auth.officeLogin({ office_id: tech.id, code: tech.code_ }, "11.9.9.9")).status, 429);
+  assert.equal((await auth.officeLogin({ office_id: pm.id, code: pm.code_ }, "11.9.9.9")).status, 200, "other offices unaffected");
+});

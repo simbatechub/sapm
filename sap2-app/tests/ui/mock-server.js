@@ -7,6 +7,7 @@ const { seedDefaults } = require("../../src/admin/migrate");
 const { createApi } = require("../../src/admin/api");
 const P = require("../../src/admin/performance");
 const { createAuth } = require("../../src/admin/auth");
+const { securityHeaders } = require("../../src/security");
 const { adminPayrollRow } = require("../../src/admin/payroll");
 const seed = require("../../data/seed.json");
 const TODAY = process.env.MOCK_TODAY || "2026-10-20";
@@ -36,6 +37,7 @@ const MGT = { role: "management", name: "Mr Billy" };
     return { month, totals: { instructor: 0, admin: 0, total: 0, paid: 0, pending: 0 }, rows };
   }
   http.createServer(async (req, res) => {
+    securityHeaders(req, res, () => { });
     const u = new URL(req.url, "http://x"); let raw = ""; for await (const c of req) raw += c; let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch (e) { }
     if (u.pathname === "/__test/codes") return send(res, 200, codes);
     if (u.pathname.startsWith("/api/")) {

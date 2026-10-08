@@ -7,6 +7,7 @@ const { pool, query } = require("./db");
 const { pgStore } = require("./admin/store");
 const { ensureSchema } = require("./admin/migrate");
 const { createApi, mount } = require("./admin/api");
+const { securityHeaders } = require("./security");
 const { createAuth } = require("./admin/auth");
 const P = require("./admin/performance");
 const { adminPayrollRow } = require("./admin/payroll");
@@ -21,6 +22,8 @@ const adminReady = ensureSchema(pool).then(
 adminReady.catch(() => {}); // reported on use; the rest of SAP2 keeps working
 
 const app = express();
+app.disable("x-powered-by");
+app.use(securityHeaders);
 // Only allow pages served from this app (blocks other websites from reading the data); every API call also needs a sign-in.
 app.use(
   cors({
