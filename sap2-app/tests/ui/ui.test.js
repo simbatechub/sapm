@@ -217,6 +217,11 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     eq((await fetch(BASE + "/api/staff", { headers: H })).status, 403, "staff must not read management data");
     eq((await fetch(BASE + "/api/admin/me", { headers: { "x-staff-id": String(isi.id), "x-office-code": CODES.offices["Content Creator"] } })).status, 401, "office code must not work for another office's staff");
     eq((await fetch(BASE + "/api/admin/me", { headers: { "x-staff-id": String(ada.id), "x-staff-code": code } })).status, 200, "personal code also works");
+    await p2.locator("aside nav button", { hasText: "Weekly report" }).click(); await p2.waitForSelector("#rwpick");
+    await p2.fill("#rwpick", "2026-09-23"); await p2.dispatchEvent("#rwpick", "change"); await p2.waitForFunction(() => /Week of 2026-09-21/.test(document.querySelector("main").innerText));
+    await p2.setInputFiles("input[type=file]", { name: "report.txt", mimeType: "text/plain", buffer: Buffer.from("Ran two workshops") });
+    await p2.waitForFunction(() => document.querySelector("#rf_activities").value.includes("Ran two workshops"));
+    await p2.locator("button", { hasText: "Submit report" }).click(); await p2.waitForFunction(() => /2026-09-21/.test(document.querySelector("main").innerText) && /Submitted reports cannot be edited/.test(document.querySelector("main").innerText), null, { timeout: 4000 });
     await p2.close();
   });
   await step("login rate limit: repeated wrong codes are locked out", async () => {

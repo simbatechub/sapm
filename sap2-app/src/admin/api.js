@@ -462,6 +462,7 @@ function createApi({ store, today = P.todayStr, ready = Promise.resolve() }) {
     const b = c.body; let existing = id ? await tx.one("weekly_reports", { id }) : null; if (id && !existing) throw notFound("Report not found");
     const sid = who(c, existing ? existing.staff_id : b.staff_id); if (existing && existing.staff_id !== sid) throw forbid();
     const s = await adminOf(tx, sid), week = E.mondayOf(dateV(existing ? existing.week_start : b.week_start, "week_start"));
+    if (!existing && week > E.mondayOf(c.today)) throw bad("You cannot report on a week that has not started");
     existing = existing || (await tx.one("weekly_reports", { staff_id: sid, week_start: week }));
     if (existing && ["APPROVED"].includes(existing.status)) throw conflict("This report is already approved.");
     if (existing && existing.status === "SUBMITTED" && c.actor.role === "staff") throw conflict("Already submitted and waiting for review.");

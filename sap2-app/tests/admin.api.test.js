@@ -121,6 +121,8 @@ test("weekly reports: on-time vs late flags, review workflow; deliverables workf
   assert.equal((await call("POST", "/reports", { actor: A, body: { week_start: "2026-10-12", submit: true, activities: "", achievements: "" } })).status, 400);
   const sub = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-10-12", activities: "Edited videos", achievements: "5 posts", submit: true } }); assert.equal(sub.status, "SUBMITTED"); assert.equal(sub.on_time, true); // due Oct 20 (Mon)
   const lateRep = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-10-05", activities: "x", submit: true } }); assert.equal(lateRep.on_time, false);
+  assert.equal((await call("POST", "/reports", { actor: A, body: { week_start: "2026-11-09", activities: "x" } })).status, 400); // future week refused
+  { const p = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-09-28", activities: "older week", submit: true } }); assert.equal(p.week_start, "2026-09-28"); } // any past week can be filed
   assert.equal((await call("POST", `/reports/${sub.id}/review`, { actor: A, body: { decision: "APPROVED" } })).status, 403);
   assert.equal((await call("POST", `/reports/${sub.id}/review`, { body: { decision: "REJECTED" } })).status, 400);
   await ok("POST", `/reports/${sub.id}/review`, { body: { decision: "APPROVED", comment: "Good" } });
