@@ -16,7 +16,7 @@ const MGT = { role: "management", name: "Mr Billy" };
   const store = memoryStore();
   for (const s of seed) await store.insert("staff", { name: s.name, email: s.email, phone: s.phone, bank: s.bank, account_number: s.account_number, staff_type: s.staff_type, role: s.role, monthly_salary: s.monthly_salary, campuses: s.campuses || [], skills: s.skills || [], frequency: s.frequency, per_appearance_rate: 20000, active: true });
   await seedDefaults(store);
-  const api = createApi({ store, today: () => TODAY, now: () => new Date(TODAY + "T10:00:00Z") });
+  const api = createApi({ store, today: () => TODAY, now: () => new Date(process.env.MOCK_NOW || TODAY + "T10:00:00Z") });
   const auth = createAuth({ store, apiKey: () => undefined });
   // test-only: fresh private codes (the real project never stores plaintext codes)
   const codes = { admin: await P.createAdminCode(store, { name: "test" }), offices: {} };

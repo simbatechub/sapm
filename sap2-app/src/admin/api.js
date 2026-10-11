@@ -460,7 +460,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   get("/reports/window", "any", async (c) => {
     const off = Number(process.env.SAP2_TZ_OFFSET_HOURS ?? 1); const wk = c.query.week_start ? E.mondayOf(dateV(c.query.week_start, "week_start")) : E.mondayOf(c.today);
-    const w = E.reportWindowState(wk, c.now, off); return { week_start: wk, state: w.state, opens: w.opens.toISOString(), closes: w.closes.toISOString(), now: c.now.toISOString(), tz_offset_hours: off };
+    const w = E.reportWindowState(wk, c.now, off); const cw = E.mondayOf(c.today), open_week = [cw, E.addDays(cw, -7)].find((x) => E.reportWindowState(x, c.now, off).state === "OPEN") || null;
+    return { open_week, week_start: wk, state: w.state, opens: w.opens.toISOString(), closes: w.closes.toISOString(), now: c.now.toISOString(), tz_offset_hours: off };
   });
   const saveReport = async (c, id) => c.store.tx(async (tx) => {
     const b = c.body; let existing = id ? await tx.one("weekly_reports", { id }) : null; if (id && !existing) throw notFound("Report not found");
