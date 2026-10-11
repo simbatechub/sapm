@@ -190,11 +190,10 @@ test("attendance switched off (remote staff): hidden, no attendance penalty or w
   assert.equal(on.components.find((c) => c.component === "attendance").hidden, false);
 });
 
-test("weekly report window: opens Saturday 1am, closes Tuesday 11pm (Lagos)", () => {
-  const st = (iso) => E.reportWindowState("2026-10-12", new Date(iso)).state;
-  assert.equal(st("2026-10-16T23:59:00Z"), "NOT_OPEN"); // Sat 00:59 Lagos
-  assert.equal(st("2026-10-17T00:00:00Z"), "OPEN"); // Sat 01:00 Lagos
-  assert.equal(st("2026-10-16T23:30:00Z"), "NOT_OPEN"); // Sat 00:30 Lagos
-  assert.equal(st("2026-10-20T21:59:00Z"), "OPEN"); // Tue 22:59 Lagos
-  assert.equal(st("2026-10-20T22:01:00Z"), "CLOSED"); // Tue 23:01 Lagos
+test("weekly report window: opens Friday 1am, closes Sunday 11pm (Lagos)", () => {
+  const st = (iso) => E.reportWindowState("2026-10-05", new Date(iso)).state;
+  assert.equal(st("2026-10-08T23:59:00Z"), "NOT_OPEN"); // Fri 00:59 Lagos
+  assert.equal(st("2026-10-09T00:00:00Z"), "OPEN"); // Fri 01:00 Lagos
+  assert.equal(st("2026-10-11T21:59:00Z"), "OPEN"); // Sun 22:59 Lagos
+  assert.equal(st("2026-10-11T22:01:00Z"), "CLOSED"); // Sun 23:01 Lagos
 });

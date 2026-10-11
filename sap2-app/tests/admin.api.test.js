@@ -15,7 +15,7 @@ async function setup() {
   const store = memoryStore();
   for (const s of seed) await store.insert("staff", { name: s.name, email: s.email, phone: s.phone, bank: s.bank, account_number: s.account_number, staff_type: s.staff_type, role: s.role, monthly_salary: s.monthly_salary, per_appearance_rate: 20000 });
   const summary = await seedDefaults(store);
-  const api = createApi({ store, today: () => TODAY, now: () => new Date(TODAY + "T10:00:00Z") });
+  const api = createApi({ store, today: () => TODAY, now: () => new Date(globalThis.__NOW || TODAY + "T10:00:00Z") });
   const call = async (method, path, { query, body, actor = MGT } = {}) => { const r = await api.handle(method, path, { query, body, actor }); return r || { status: 404, body: null }; };
   const ok = async (...a) => { const r = await call(...a); assert.equal(r.status, 200, `${a[0]} ${a[1]} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   const staff = Object.fromEntries((await store.find("staff")).map((s) => [s.name, s]));
@@ -117,6 +117,7 @@ test("activities, attendance (late detection, correction audit), meetings (mirro
 
 test("weekly reports: on-time vs late flags, review workflow; deliverables workflow", async () => {
   const { ok, call, staff } = await setup(); const ada = staff["Adelana Victor"], A = staffActor(ada);
+  globalThis.__NOW = "2026-10-17T10:00:00Z"; // Saturday: the 12-18 Oct report window is open
   const draft = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-10-14", activities: "Edited videos" } }); assert.equal(draft.status, "DRAFT"); assert.equal(draft.week_start, "2026-10-12");
   assert.equal((await call("POST", "/reports", { actor: A, body: { week_start: "2026-10-12", submit: true, activities: "", achievements: "" } })).status, 400);
   const sub = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-10-12", activities: "Edited videos", achievements: "5 posts", submit: true } }); assert.equal(sub.status, "SUBMITTED"); assert.equal(sub.on_time, true); // due Oct 20 (Mon)
@@ -141,6 +142,7 @@ async function populateOctober(ok, ada) {
   const A = staffActor(ada); await ok("POST", `/tasks/${t.id}/submit`, { actor: A, body: { actual_output: "ok" } });
   await ok("POST", `/tasks/${t.id}/verify`, { body: { staff_id: ada.id, performance_score: 100 } });
   for (const d of ["2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06"]) await ok("POST", "/attendance", { body: { staff_id: ada.id, date: d, expected_time: "08:30", arrival_time: "08:30" } });
+  globalThis.__NOW = undefined;
 }
 
 test("performance: calculate, KPI results, teamwork, payment recommendation, finalize rules", async () => {

@@ -469,7 +469,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const s = await adminOf(tx, sid), week = E.mondayOf(dateV(existing ? existing.week_start : b.week_start, "week_start"));
     if (!existing && week > E.mondayOf(c.today)) throw bad("You cannot report on a week that has not started");
     const win = E.reportWindowState(week, c.now, Number(process.env.SAP2_TZ_OFFSET_HOURS ?? 1));
-    if (c.actor.role === "staff" && win.state !== "OPEN" && !(existing && existing.status === "REJECTED")) throw bad(win.state === "NOT_OPEN" ? "Reports for this week open on Saturday at 1:00 am." : "Reports for this week are closed (they close on Tuesday at 11:00 pm). Please ask management to record it.");
+    if (c.actor.role === "staff" && win.state !== "OPEN" && !(existing && existing.status === "REJECTED")) throw bad(win.state === "NOT_OPEN" ? "Reports for this week open on Friday at 1:00 am." : "Reports for this week are closed (they close on Sunday at 11:00 pm). Please ask management to record it.");
     existing = existing || (await tx.one("weekly_reports", { staff_id: sid, week_start: week }));
     if (existing && ["APPROVED"].includes(existing.status)) throw conflict("This report is already approved.");
     if (existing && existing.status === "SUBMITTED" && c.actor.role === "staff") throw conflict("Already submitted and waiting for review.");
@@ -477,7 +477,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const submit = boolV(b.submit), settings = await P.getSettings(tx);
     if (submit && !text.activities && !text.achievements) throw bad("Describe your major activities or achievements before submitting");
     const row = { staff_id: sid, office_id: s.office_id, week_start: week, ...text, updated_at: new Date().toISOString() };
-    if (submit) { const due = E.addDays(week, 7 + E.num(settings.report_grace_days, 1)); Object.assign(row, { status: "SUBMITTED", submitted_at: new Date().toISOString(), on_time: existing && existing.on_time === true ? true : c.actor.role === "staff" ? win.state === "OPEN" : c.today <= due }); }
+    if (submit) { const due = E.addDays(week, 6); Object.assign(row, { status: "SUBMITTED", submitted_at: new Date().toISOString(), on_time: existing && existing.on_time === true ? true : c.actor.role === "staff" ? win.state === "OPEN" : c.today <= due }); }
     return existing ? (await tx.update("weekly_reports", { id: existing.id }, row))[0] : tx.insert("weekly_reports", { ...row, status: submit ? "SUBMITTED" : "DRAFT" });
   });
   post("/reports", "any", (c) => saveReport(c, null));

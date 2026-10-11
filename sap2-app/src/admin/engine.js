@@ -102,7 +102,7 @@ function scoreReports(reports, month, settings, today) {
   const det = { weeks_due: 0, approved_on_time: 0, approved_late: 0, not_submitted: 0, rejected: 0, awaiting_review: 0, submitted_on_time: 0, submitted_late: 0 };
   let sum = 0, n = 0;
   for (const ws of weeksOfMonth(month)) {
-    const due = addDays(ws, 7 + num(settings.report_grace_days, 1));
+    const due = addDays(ws, 6); // reports close on the Sunday of the report week
     const rep = reports.find((r) => r.week_start === ws);
     if (rep && rep.status !== "DRAFT") (rep.on_time ? det.submitted_on_time++ : det.submitted_late++);
     if (due >= today && !(rep && rep.status === "APPROVED")) continue; // not yet due
@@ -284,8 +284,8 @@ function closingChecks(perStaff) {
   return out;
 }
 
-// Weekly report window (local time, default Lagos UTC+1): opens Saturday 01:00 of the report week, closes the following Tuesday 23:00.
-const REPORT_OPEN = { day: 5, hour: 1 }, REPORT_CLOSE = { day: 8, hour: 23 };
+// Weekly report window (local time, default Lagos UTC+1): opens Friday 01:00 of the report week, closes that Sunday 23:00.
+const REPORT_OPEN = { day: 4, hour: 1 }, REPORT_CLOSE = { day: 6, hour: 23 };
 const reportWindow = (weekStart, offsetHours = 1) => {
   const at = (o) => new Date(Date.parse(addDays(weekStart, o.day) + "T00:00:00Z") + (o.hour - offsetHours) * 3600e3);
   return { opens: at(REPORT_OPEN), closes: at(REPORT_CLOSE) };

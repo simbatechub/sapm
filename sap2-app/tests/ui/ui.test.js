@@ -220,7 +220,7 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await p2.locator("aside nav button", { hasText: "Weekly report" }).click(); await p2.waitForSelector("#rwpick");
     await p2.fill("#rwpick", "2026-09-23"); await p2.dispatchEvent("#rwpick", "change"); await p2.waitForFunction(() => /Week of 2026-09-21/.test(document.querySelector("main").innerText) && /Closed/.test(document.querySelector("main").innerText));
     ok(!(await p2.locator("button", { hasText: "Submit report" }).count()), "closed week: no submit button");
-    await p2.fill("#rwpick", "2026-10-14"); await p2.dispatchEvent("#rwpick", "change"); await p2.waitForFunction(() => /Week of 2026-10-12/.test(document.querySelector("main").innerText) && /Open/.test(document.querySelector("main").innerText));
+    await p2.fill("#rwpick", "2026-10-14"); await p2.dispatchEvent("#rwpick", "change"); await p2.waitForFunction(() => /Week of 2026-10-12/.test(document.querySelector("main").innerText) && /Open - this report/.test(document.querySelector("main").innerText));
     await p2.setInputFiles("input[type=file]", { name: "report.txt", mimeType: "text/plain", buffer: Buffer.from("Ran two workshops") });
     await p2.waitForFunction(() => document.querySelector("#rf_activities").value.includes("Ran two workshops"));
     await p2.locator("button", { hasText: "Submit report" }).click(); await p2.waitForFunction(() => /2026-10-12/.test(document.querySelector("main").innerText) && /Submitted reports cannot be edited/.test(document.querySelector("main").innerText), null, { timeout: 4000 });
