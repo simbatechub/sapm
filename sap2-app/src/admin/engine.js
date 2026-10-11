@@ -284,7 +284,16 @@ function closingChecks(perStaff) {
   return out;
 }
 
+// Weekly report window (local time, default Lagos UTC+1): opens Saturday 01:00 of the report week, closes the following Tuesday 23:00.
+const REPORT_OPEN = { day: 5, hour: 1 }, REPORT_CLOSE = { day: 8, hour: 23 };
+const reportWindow = (weekStart, offsetHours = 1) => {
+  const at = (o) => new Date(Date.parse(addDays(weekStart, o.day) + "T00:00:00Z") + (o.hour - offsetHours) * 3600e3);
+  return { opens: at(REPORT_OPEN), closes: at(REPORT_CLOSE) };
+};
+const reportWindowState = (weekStart, now, offsetHours = 1) => { const w = reportWindow(weekStart, offsetHours); const t = +now; return { ...w, state: t < +w.opens ? "NOT_OPEN" : t > +w.closes ? "CLOSED" : "OPEN" }; };
+
 module.exports = {
+  reportWindow, reportWindowState,
   COMPONENTS, COMPONENT_LABELS, MEETING_TYPES, mergeSettings, monthRange, prevMonth, addDays, mondayOf, weeksOfMonth, quarterMonths, bandFor, paymentFor,
   scoreTasks, scoreAttendance, scoreReports, scoreDeliverables, scoreKpis, kpiRatio, normalizeWeights, calculate, computeAlerts, closingChecks, r2, num,
 };

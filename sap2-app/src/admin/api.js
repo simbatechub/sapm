@@ -36,7 +36,7 @@ const KPI_TYPES = ["PERCENTAGE", "NUMBER", "YES_NO", "RATING_10", "COMPLETION_RA
 const AUTO = ["TASK_ON_TIME", "TASK_COMPLETION", "REPORTS_ON_TIME", "ATTENDANCE", "PUNCTUALITY", "MEETING_ATTENDANCE", "DELIVERABLE_ON_TIME"];
 const EVENT_TYPES = ["WORK", "OFFICE", "MEETING", "MANDATORY_MEETING", "TRAINING", "EVENT", "OFFICIAL_ASSIGNMENT"];
 
-function createApi({ store, today = P.todayStr, ready = Promise.resolve() }) {
+function createApi({ store, today = P.todayStr, now = () => new Date(), ready = Promise.resolve() }) {
   const routes = [];
   const add = (method, path, guard, fn) => {
     const keys = []; const re = new RegExp("^" + path.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "/?$");
@@ -57,7 +57,7 @@ function createApi({ store, today = P.todayStr, ready = Promise.resolve() }) {
       const m = r.re.exec(path); if (!m) continue;
       if (r.guard === "mgmt" && (!actor || actor.role !== "management")) return { status: 403, body: { error: "Management access required" } };
       const params = {}; r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
-      try { return { status: 200, body: await r.fn({ params, query: query || {}, body: body || {}, actor, store, today: today() }) }; }
+      try { return { status: 200, body: await r.fn({ params, query: query || {}, body: body || {}, actor, store, today: today(), now: now() }) }; }
       catch (e) { return errorResponse(e); }
     }
     return null;
@@ -458,11 +458,17 @@ function createApi({ store, today = P.todayStr, ready = Promise.resolve() }) {
     const names = await staffNames(c.store);
     return (await c.store.find("weekly_reports", w, { order: [["week_start", "desc"], ["id", "desc"]], limit: 500 })).map((r) => ({ ...r, staff_name: names.get(r.staff_id), due_date: E.addDays(r.week_start, 7 + (0)) }));
   });
+  get("/reports/window", "any", async (c) => {
+    const off = Number(process.env.SAP2_TZ_OFFSET_HOURS ?? 1); const wk = c.query.week_start ? E.mondayOf(dateV(c.query.week_start, "week_start")) : E.mondayOf(c.today);
+    const w = E.reportWindowState(wk, c.now, off); return { week_start: wk, state: w.state, opens: w.opens.toISOString(), closes: w.closes.toISOString(), now: c.now.toISOString(), tz_offset_hours: off };
+  });
   const saveReport = async (c, id) => c.store.tx(async (tx) => {
     const b = c.body; let existing = id ? await tx.one("weekly_reports", { id }) : null; if (id && !existing) throw notFound("Report not found");
     const sid = who(c, existing ? existing.staff_id : b.staff_id); if (existing && existing.staff_id !== sid) throw forbid();
     const s = await adminOf(tx, sid), week = E.mondayOf(dateV(existing ? existing.week_start : b.week_start, "week_start"));
     if (!existing && week > E.mondayOf(c.today)) throw bad("You cannot report on a week that has not started");
+    const win = E.reportWindowState(week, c.now, Number(process.env.SAP2_TZ_OFFSET_HOURS ?? 1));
+    if (c.actor.role === "staff" && win.state !== "OPEN" && !(existing && existing.status === "REJECTED")) throw bad(win.state === "NOT_OPEN" ? "Reports for this week open on Saturday at 1:00 am." : "Reports for this week are closed (they close on Tuesday at 11:00 pm). Please ask management to record it.");
     existing = existing || (await tx.one("weekly_reports", { staff_id: sid, week_start: week }));
     if (existing && ["APPROVED"].includes(existing.status)) throw conflict("This report is already approved.");
     if (existing && existing.status === "SUBMITTED" && c.actor.role === "staff") throw conflict("Already submitted and waiting for review.");
@@ -470,7 +476,7 @@ function createApi({ store, today = P.todayStr, ready = Promise.resolve() }) {
     const submit = boolV(b.submit), settings = await P.getSettings(tx);
     if (submit && !text.activities && !text.achievements) throw bad("Describe your major activities or achievements before submitting");
     const row = { staff_id: sid, office_id: s.office_id, week_start: week, ...text, updated_at: new Date().toISOString() };
-    if (submit) { const due = E.addDays(week, 7 + E.num(settings.report_grace_days, 1)); Object.assign(row, { status: "SUBMITTED", submitted_at: new Date().toISOString(), on_time: existing && existing.on_time === true ? true : c.today <= due }); }
+    if (submit) { const due = E.addDays(week, 7 + E.num(settings.report_grace_days, 1)); Object.assign(row, { status: "SUBMITTED", submitted_at: new Date().toISOString(), on_time: existing && existing.on_time === true ? true : c.actor.role === "staff" ? win.state === "OPEN" : c.today <= due }); }
     return existing ? (await tx.update("weekly_reports", { id: existing.id }, row))[0] : tx.insert("weekly_reports", { ...row, status: submit ? "SUBMITTED" : "DRAFT" });
   });
   post("/reports", "any", (c) => saveReport(c, null));
