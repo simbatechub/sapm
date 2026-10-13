@@ -55,3 +55,21 @@ test("dead push subscriptions are removed", async () => {
   await n.notify([a.id], { title: "x" }); await n.idle();
   assert.equal((await store.find("push_subscriptions", {})).length, 0);
 });
+
+test("sms: only when flagged and configured; numbers become 234…; failures recorded", async () => {
+  const { store, a } = await world(); await store.update("staff", { id: a.id }, { phone: "8160934048" });
+  const calls = []; const fetchFn = async (url, init) => { calls.push({ url, body: JSON.parse(init.body) }); return { ok: true, status: 200 }; };
+  const env = { TERMII_API_KEY: "k", TERMII_SENDER_ID: "SIMBATECH" };
+  const n = createNotifier({ store, env, fetchFn, log: quiet });
+  await n.notify([a.id], { title: "No sms", body: "x" }); await n.idle(); assert.equal(calls.length, 0, "not flagged: no SMS");
+  await n.notify([a.id], { title: "Report closes tonight", body: "Submit now", sms: true }); await n.idle();
+  assert.equal(calls.length, 1); assert.equal(calls[0].body.to, "2348160934048"); assert.equal(calls[0].body.from, "SIMBATECH"); assert.match(calls[0].body.sms, /Report closes tonight: Submit now/);
+  assert.equal((await store.find("notifications", { title: "Report closes tonight" }))[0].sms_status, "SENT");
+  await store.update("staff", { id: a.id }, { phone: "08160934048" }); await n.notify([a.id], { title: "Zero prefix", sms: true }); await n.idle(); assert.equal(calls[1].body.to, "2348160934048");
+  await store.update("staff", { id: a.id }, { phone: "123" }); await n.notify([a.id], { title: "Bad number", sms: true }); await n.idle();
+  assert.equal((await store.find("notifications", { title: "Bad number" }))[0].sms_status, "NO_NUMBER");
+  const off = createNotifier({ store, env: {}, fetchFn, log: quiet }); await off.notify([a.id], { title: "Unconfigured", sms: true }); await off.idle();
+  assert.equal((await store.find("notifications", { title: "Unconfigured" }))[0].sms_status, "NOT_CONFIGURED");
+  const bad = createNotifier({ store, env, fetchFn: async () => ({ ok: false, status: 401 }), log: quiet }); await store.update("staff", { id: a.id }, { phone: "8160934048" }); await bad.notify([a.id], { title: "Rejected", sms: true }); await bad.idle();
+  assert.equal((await store.find("notifications", { title: "Rejected" }))[0].sms_status, "FAILED");
+});

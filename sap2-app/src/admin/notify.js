@@ -13,6 +13,7 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
   const appUrl = (env.APP_URL || "https://sapm-7yat.onrender.com").replace(/\/$/, "");
   const provider = env.BREVO_API_KEY && env.MAIL_FROM ? "brevo" : env.RESEND_API_KEY && env.MAIL_FROM ? "resend" : null;
   const vapid = env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT || "mailto:" + (env.MAIL_FROM || "admin@example.com") } : null;
+  const sms = env.TERMII_API_KEY && env.TERMII_SENDER_ID ? { key: env.TERMII_API_KEY, from: env.TERMII_SENDER_ID, base: (env.TERMII_BASE_URL || "https://api.ng.termii.com").replace(/\/$/, ""), channel: env.TERMII_CHANNEL || "generic" } : null;
   const pending = new Set();
   const track = (p) => { pending.add(p); p.finally(() => pending.delete(p)); return p; };
 
@@ -29,6 +30,20 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
       if (!r.ok) { log.error("Email failed:", r.status); return "FAILED"; }
       return "SENT";
     } catch (e) { log.error("Email error:", e.message); return "FAILED"; }
+  }
+
+  // Nigerian numbers are stored without the country code (e.g. 8160934048 or 08160934048); Termii wants 2348160934048.
+  const msisdn = (p) => { const d = String(p || "").replace(/\D/g, ""); if (/^234\d{10}$/.test(d)) return d; if (/^0\d{10}$/.test(d)) return "234" + d.slice(1); if (/^\d{10}$/.test(d)) return "234" + d; return null; };
+  async function sendSms(phone, n) {
+    if (!n.sms) return null;
+    if (!sms) return "NOT_CONFIGURED";
+    const to = msisdn(phone); if (!to) return "NO_NUMBER";
+    const text = `${n.title}${n.body ? ": " + n.body.replace(/\s+/g, " ") : ""}`.slice(0, 300) + " - SIMBA TECHub";
+    try {
+      const r = await fetchFn(sms.base + "/api/sms/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to, from: sms.from, sms: text, type: "plain", channel: sms.channel, api_key: sms.key }) });
+      if (!r.ok) { log.error("SMS failed:", r.status); return "FAILED"; }
+      return "SENT";
+    } catch (e) { log.error("SMS error:", e.message); return "FAILED"; }
   }
 
   async function sendPushes(staffId, n) {
@@ -49,7 +64,8 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
     try {
       const email_status = await sendEmail(staff && staff.email, row);
       const push_status = await sendPushes(row.staff_id, row);
-      await store.update("notifications", { id: row.id }, { email_status, push_status });
+      const sms_status = await sendSms(staff && staff.phone, row);
+      await store.update("notifications", { id: row.id }, { email_status, push_status, sms_status });
     } catch (e) { log.error("Notification delivery error:", e.message); }
   }
 
@@ -62,7 +78,7 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
         if (!byId.has(id)) continue;
         if (n.dedupe_key && (await store.find("notifications", { staff_id: id, dedupe_key: n.dedupe_key })).length) continue;
         const row = await store.insert("notifications", { staff_id: id, kind: n.kind || "INFO", title: String(n.title).slice(0, 200), body: n.body ? String(n.body).slice(0, 2000) : null, link: n.link || null, dedupe_key: n.dedupe_key || null, created_by: n.created_by || null });
-        rows.push(row); track(deliver({ ...row, no_link: n.no_link }, byId.get(id)));
+        rows.push(row); track(deliver({ ...row, no_link: n.no_link, sms: n.sms }, byId.get(id)));
       }
     } catch (e) { log.error("Notification error:", e.message); }
     return rows;
@@ -80,21 +96,21 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
         const reps = await store.find("weekly_reports", { week_start: wk }); const done = new Set(reps.filter((r) => ["SUBMITTED", "APPROVED"].includes(r.status)).map((r) => r.staff_id));
         const todo = ids.filter((id) => !done.has(id)); const label = `${wk} to ${E.addDays(wk, 6)}`;
         out.report_open += (await notify(todo, { kind: "REPORT_OPEN", title: "Weekly report is now open", body: `Submit your weekly report for ${label}. It closes on Sunday at 11:00 pm.`, link: "rep", dedupe_key: "report-open:" + wk })).length;
-        if (+now >= +w.closes - 14 * 3600e3) out.report_closing += (await notify(todo, { kind: "REPORT_CLOSING", title: "Weekly report closes tonight", body: `You have not submitted your report for ${label}. The window closes tonight at 11:00 pm.`, link: "rep", dedupe_key: "report-close:" + wk })).length;
+        if (+now >= +w.closes - 14 * 3600e3) out.report_closing += (await notify(todo, { kind: "REPORT_CLOSING", title: "Weekly report closes tonight", body: `You have not submitted your report for ${label}. The window closes tonight at 11:00 pm.`, link: "rep", sms: true, dedupe_key: "report-close:" + wk })).length;
       }
       const asg = await store.find("task_assignments", { staff_id: ids, status: ["TODO", "IN_PROGRESS"] });
       const tasks = asg.length ? await store.find("admin_tasks", { id: [...new Set(asg.map((a) => a.task_id))] }) : []; const tm = new Map(tasks.map((t) => [t.id, t]));
       for (const a of asg) {
         const t = tm.get(a.task_id); if (!t || t.cancelled) continue;
         const due = String(t.due_date).slice(0, 10);
-        if (due === tomorrow || due === today) out.task_due += (await notify([a.staff_id], { kind: "TASK_DUE", title: due === today ? "Task due today" : "Task due tomorrow", body: t.title, link: "tasks", dedupe_key: `task-due:${a.id}:${due}` })).length;
+        if (due === tomorrow || due === today) out.task_due += (await notify([a.staff_id], { kind: "TASK_DUE", title: due === today ? "Task due today" : "Task due tomorrow", body: t.title, link: "tasks", sms: due === today, dedupe_key: `task-due:${a.id}:${due}` })).length;
         else if (due < today) out.task_overdue += (await notify([a.staff_id], { kind: "TASK_OVERDUE", title: "Task overdue", body: `${t.title} was due on ${due}.`, link: "tasks", dedupe_key: `task-overdue:${a.id}:${due}` })).length;
       }
     } catch (e) { log.error("Reminder error:", e.message); }
     return out;
   }
 
-  return { notify, runReminders, idle: async () => { while (pending.size) await Promise.allSettled([...pending]); }, status: () => ({ email: provider, push: !!vapid, publicKey: vapid ? vapid.publicKey : null }) };
+  return { notify, runReminders, idle: async () => { while (pending.size) await Promise.allSettled([...pending]); }, status: () => ({ email: provider, sms: sms ? "termii" : null, push: !!vapid, publicKey: vapid ? vapid.publicKey : null }) };
 }
 const noopNotifier = { notify: async () => [], runReminders: async () => ({}), idle: async () => {}, status: () => ({ email: null, push: false, publicKey: null }) };
 module.exports = { createNotifier, noopNotifier };

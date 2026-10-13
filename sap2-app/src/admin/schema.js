@@ -308,6 +308,7 @@ table("notifications", {
   read_at: "TIMESTAMPTZ",
   email_status: "TEXT",
   push_status: "TEXT",
+  sms_status: "TEXT",
   created_by: "TEXT",
   created_at: TIMESTAMP,
 }, { indexes: [["staff_id", "created_at"], ["dedupe_key"]] });
@@ -384,7 +385,7 @@ const EXISTING = {
   payments: { cols: { id: "SERIAL PRIMARY KEY", staff_id: "INTEGER NOT NULL", pay_type: "TEXT NOT NULL", month: "CHAR(7) NOT NULL", amount: "INTEGER NOT NULL", reference: "TEXT NOT NULL", paid_at: TIMESTAMP, base_salary: "INTEGER", performance_score: "NUMERIC", recommended_pay: "INTEGER", approved_pay: "INTEGER" }, unique: [], indexes: [] },
 };
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Idempotent migration SQL. Existing tables/data are never dropped or rewritten.
 function ddlStatements() {
