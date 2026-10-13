@@ -333,6 +333,10 @@ test("notifications: new task, review, report open reminder, read/unread, privac
   await ok("POST", `/tasks/${t.id}/reject`, { body: { staff_id: ada.id, comment: "Add the dates" } });
   assert.equal((await ok("GET", "/notifications", { actor: A })).items[0].kind, "TASK_REJECTED");
   assert.equal((await call("POST", "/notifications/send", { actor: A, body: { title: "x" } })).status, 403);
+  { const inst = Object.values(staff).filter((x) => x.staff_type === "instructor" && x.active).length, adm = Object.values(staff).filter((x) => ["admin", "both"].includes(x.staff_type) && x.active).length, both = Object.values(staff).filter((x) => ["instructor", "both"].includes(x.staff_type) && x.active).length;
+    assert.equal((await ok("POST", "/notifications/send", { body: { title: "For instructors", audience: "INSTRUCTORS" } })).sent, both);
+    assert.equal((await ok("POST", "/notifications/send", { body: { title: "For admin", audience: "ADMIN" } })).sent, adm);
+    assert.ok(inst > 0 && both >= inst); assert.equal((await call("POST", "/notifications/send", { body: { title: "x", audience: "NOBODY" } })).status, 400); }
   const sent = await ok("POST", "/notifications/send", { body: { title: "Team update", body: "Meeting at 12", staff_ids: [ada.id] } }); assert.equal(sent.sent, 1);
   assert.equal((await call("POST", "/notifications/push-subscribe", { actor: A, body: { endpoint: "http://insecure", keys: { p256dh: "a", auth: "b" } } })).status, 400);
   await ok("POST", "/notifications/push-subscribe", { actor: A, body: { endpoint: "https://push.example.com/x", keys: { p256dh: "AAAA", auth: "BBBB" } } }); assert.equal((await ok("GET", "/notifications", { actor: A })).devices, 1);

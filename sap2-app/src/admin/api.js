@@ -237,9 +237,11 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   post("/notifications/send", "mgmt", async (c) => {
     const title = str(c.body.title, "title", { req: true, max: 200 }), body = str(c.body.body, "body", { max: 2000 });
-    const ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? c.body.staff_ids.map((x) => idV(x, "staff_ids")) : (await P.adminStaff(c.store)).map((s) => s.id);
-    const rows = await N.notify(ids, { kind: "ANNOUNCEMENT", title, body, link: "notif", created_by: c.actor.name });
-    await P.audit(c.store, c.actor, { action: "NOTIFICATION_SENT", entity: "notification", entity_id: String(rows.length), reason: title }); return { sent: rows.length };
+    const audience = oneOf(c.body.audience, ["ADMIN", "INSTRUCTORS", "ALL"], "audience", "ADMIN");
+    const active = (await c.store.find("staff", { active: true })), types = { ADMIN: ["admin", "both"], INSTRUCTORS: ["instructor", "both"], ALL: ["admin", "both", "instructor"] }[audience];
+    const ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? c.body.staff_ids.map((x) => idV(x, "staff_ids")) : active.filter((x) => types.includes(x.staff_type)).map((x) => x.id);
+    const rows = await N.notify(ids, { kind: "ANNOUNCEMENT", title, body, link: "notif", created_by: c.actor.name, no_link: audience === "INSTRUCTORS" });
+    await P.audit(c.store, c.actor, { action: "NOTIFICATION_SENT", entity: "notification", entity_id: String(rows.length), reason: title + " (" + audience + ")" }); return { sent: rows.length, audience };
   });
   post("/notifications/run-reminders", "mgmt", async (c) => N.runReminders(c.now));
 

@@ -19,8 +19,8 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
   async function sendEmail(to, n) {
     if (!provider) return "NOT_CONFIGURED";
     if (!validEmail(to)) return "NO_EMAIL";
-    const html = `<div style="font-family:Arial,sans-serif;max-width:560px"><h2 style="margin:0 0 8px">${esc(n.title)}</h2><p style="white-space:pre-line;font-size:15px;line-height:1.5">${esc(n.body)}</p><p><a href="${appUrl}" style="background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Open SAP2</a></p><p style="color:#888;font-size:12px">SIMBA TECHub - sent automatically from SAP2.</p></div>`;
-    const text = `${n.title}\n\n${n.body || ""}\n\nOpen SAP2: ${appUrl}`;
+    const html = `<div style="font-family:Arial,sans-serif;max-width:560px"><h2 style="margin:0 0 8px">${esc(n.title)}</h2><p style="white-space:pre-line;font-size:15px;line-height:1.5">${esc(n.body)}</p>${n.no_link ? "" : `<p><a href="${appUrl}" style="background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Open SAP2</a></p>`}<p style="color:#888;font-size:12px">SIMBA TECHub - sent automatically from SAP2.</p></div>`;
+    const text = `${n.title}\n\n${n.body || ""}${n.no_link ? "" : `\n\nOpen SAP2: ${appUrl}`}`;
     const fromName = env.MAIL_FROM_NAME || "SIMBA TECHub SAP2";
     try {
       const r = provider === "brevo"
@@ -62,7 +62,7 @@ function createNotifier({ store, env = process.env, fetchFn = (...a) => fetch(..
         if (!byId.has(id)) continue;
         if (n.dedupe_key && (await store.find("notifications", { staff_id: id, dedupe_key: n.dedupe_key })).length) continue;
         const row = await store.insert("notifications", { staff_id: id, kind: n.kind || "INFO", title: String(n.title).slice(0, 200), body: n.body ? String(n.body).slice(0, 2000) : null, link: n.link || null, dedupe_key: n.dedupe_key || null, created_by: n.created_by || null });
-        rows.push(row); track(deliver(row, byId.get(id)));
+        rows.push(row); track(deliver({ ...row, no_link: n.no_link }, byId.get(id)));
       }
     } catch (e) { log.error("Notification error:", e.message); }
     return rows;
