@@ -174,6 +174,7 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
   await step("settings: staff attendance can be switched off for remote staff, everything adapts, and it can be switched back on", async () => {
     const navs = async () => (await page.locator("aside nav button").allInnerTexts());
     const toSettings = async () => { await page.evaluate(() => { PF.X.tab = "settings"; go("ap") }); await page.waitForSelector("#s_att"); await page.waitForTimeout(500) };
+    await toSettings(); ok((await page.locator("main").innerText()).includes("Send announcement"), "announcement button on Settings"); 
     await toSettings(); ok(await page.locator("#s_att").isChecked(), "on by default"); ok((await navs()).includes("Staff Attendance"));
     await page.locator("#s_att").uncheck(); await page.fill("#s_r", "Staff work remotely"); await page.locator("button", { hasText: "Save settings" }).click(); await page.waitForTimeout(900);
     ok(!(await navs()).includes("Staff Attendance"), "menu item gone: " + (await navs()).join("|"));
