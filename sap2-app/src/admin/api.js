@@ -3,6 +3,7 @@
 // code runs under Express (mount()) and under the in-memory tests.
 const E = require("./engine");
 const P = require("./performance");
+const { noopNotifier } = require("./notify");
 const { bad, conflict, forbid, notFound, HttpError } = P;
 
 // ---------- validators ----------
@@ -36,7 +37,8 @@ const KPI_TYPES = ["PERCENTAGE", "NUMBER", "YES_NO", "RATING_10", "COMPLETION_RA
 const AUTO = ["TASK_ON_TIME", "TASK_COMPLETION", "REPORTS_ON_TIME", "ATTENDANCE", "PUNCTUALITY", "MEETING_ATTENDANCE", "DELIVERABLE_ON_TIME"];
 const EVENT_TYPES = ["WORK", "OFFICE", "MEETING", "MANDATORY_MEETING", "TRAINING", "EVENT", "OFFICIAL_ASSIGNMENT"];
 
-function createApi({ store, today = P.todayStr, now = () => new Date(), ready = Promise.resolve() }) {
+function createApi({ store, today = P.todayStr, now = () => new Date(), ready = Promise.resolve(), notifier = noopNotifier }) {
+  const N = notifier;
   const routes = [];
   const add = (method, path, guard, fn) => {
     const keys = []; const re = new RegExp("^" + path.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "/?$");
@@ -204,6 +206,43 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     return { role: "staff", ...p, kpis };
   });
 
+  // ======================= notifications =======================
+  get("/notifications/config", "any", async () => N.status());
+  get("/notifications", "any", async (c) => {
+    const names = await staffNames(c.store);
+    if (c.actor.role === "staff") {
+      const items = await c.store.find("notifications", { staff_id: c.actor.staffId }, { order: [["created_at", "desc"], ["id", "desc"]], limit: 100 });
+      return { items, unread: items.filter((i) => !i.read_at).length, devices: (await c.store.find("push_subscriptions", { staff_id: c.actor.staffId })).length };
+    }
+    const items = (await c.store.find("notifications", {}, { order: [["created_at", "desc"], ["id", "desc"]], limit: 100 })).map((i) => ({ ...i, staff_name: names.get(i.staff_id) }));
+    return { items, unread: 0, ...N.status(), devices: (await c.store.find("push_subscriptions", {})).length };
+  });
+  post("/notifications/read", "any", async (c) => {
+    if (c.actor.role !== "staff") throw forbid("Only staff have a personal notifications list");
+    const w = { staff_id: c.actor.staffId, read_at: null }; if (Array.isArray(c.body.ids) && c.body.ids.length) w.id = c.body.ids.map((x) => idV(x, "id"));
+    const rows = await c.store.update("notifications", w, { read_at: new Date().toISOString() }); return { marked: rows.length };
+  });
+  post("/notifications/push-subscribe", "any", async (c) => {
+    if (c.actor.role !== "staff") throw forbid("Only staff can register a phone");
+    const b = c.body, ep = str(b.endpoint, "endpoint", { req: true, max: 1000 }), k = b.keys || {};
+    if (!/^https:\/\//.test(ep)) throw bad("Invalid push endpoint"); const p256dh = str(k.p256dh, "p256dh", { req: true, max: 200 }), auth = str(k.auth, "auth", { req: true, max: 100 });
+    await c.store.remove("push_subscriptions", { endpoint: ep });
+    await c.store.insert("push_subscriptions", { staff_id: c.actor.staffId, endpoint: ep, p256dh, auth, user_agent: str(b.user_agent, "user_agent", { max: 300 }) });
+    return { subscribed: true };
+  });
+  post("/notifications/push-unsubscribe", "any", async (c) => { if (c.actor.role !== "staff") throw forbid(); return { removed: await c.store.remove("push_subscriptions", { staff_id: c.actor.staffId, endpoint: str(c.body.endpoint, "endpoint", { req: true, max: 1000 }) }) }; });
+  post("/notifications/test", "any", async (c) => {
+    if (c.actor.role !== "staff") throw forbid("Only staff can send themselves a test");
+    const rows = await N.notify([c.actor.staffId], { kind: "TEST", title: "Test notification", body: "If you can read this on your phone, notifications are working.", link: "notif" }); return { sent: rows.length };
+  });
+  post("/notifications/send", "mgmt", async (c) => {
+    const title = str(c.body.title, "title", { req: true, max: 200 }), body = str(c.body.body, "body", { max: 2000 });
+    const ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? c.body.staff_ids.map((x) => idV(x, "staff_ids")) : (await P.adminStaff(c.store)).map((s) => s.id);
+    const rows = await N.notify(ids, { kind: "ANNOUNCEMENT", title, body, link: "notif", created_by: c.actor.name });
+    await P.audit(c.store, c.actor, { action: "NOTIFICATION_SENT", entity: "notification", entity_id: String(rows.length), reason: title }); return { sent: rows.length };
+  });
+  post("/notifications/run-reminders", "mgmt", async (c) => N.runReminders(c.now));
+
   // ======================= tasks =======================
   async function listTasks(c) {
     const q = c.query; const sid = who(c, q.staff_id, { optional: true });
@@ -237,7 +276,9 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const b = c.body, due = dateV(b.due_date, "due_date"), start = dateV(b.start_date, "start_date", false);
     if (start && start > due) throw bad("start_date cannot be after due_date");
     const scope = oneOf(b.scope, ["STAFF", "OFFICE"], "scope", "STAFF");
-    return c.store.tx((tx) => createTasks(tx, c, { title: str(b.title, "title", { req: true, max: 300 }), description: str(b.description, "description"), office_id: b.office_id ? idV(b.office_id, "office_id") : null, staff_ids: b.staff_ids, scope, priority: oneOf(b.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), start_date: start, due_date: due, expected_output: str(b.expected_output, "expected_output"), kpi_id: b.kpi_id ? idV(b.kpi_id, "kpi_id") : null, meeting_id: b.meeting_id ? idV(b.meeting_id, "meeting_id") : null }));
+    const made = await c.store.tx((tx) => createTasks(tx, c, { title: str(b.title, "title", { req: true, max: 300 }), description: str(b.description, "description"), office_id: b.office_id ? idV(b.office_id, "office_id") : null, staff_ids: b.staff_ids, scope, priority: oneOf(b.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), start_date: start, due_date: due, expected_output: str(b.expected_output, "expected_output"), kpi_id: b.kpi_id ? idV(b.kpi_id, "kpi_id") : null, meeting_id: b.meeting_id ? idV(b.meeting_id, "meeting_id") : null }));
+    await N.notify(made.assignees.map((a) => a.id), { kind: "TASK_ASSIGNED", title: "New task: " + made.title, body: `Due ${String(made.due_date).slice(0, 10)}${made.priority === "HIGH" ? " (high priority)" : ""}.${made.description ? "\n" + made.description : ""}`, link: "tasks", created_by: c.actor.name });
+    return made;
   });
   patch("/tasks/:id", "mgmt", async (c) => {
     const id = idV(c.params.id, "id"), b = c.body;
@@ -287,7 +328,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     for (const e of evs) await tx.insert("task_evidence", { assignment_id: a.id, kind: oneOf(e.kind, ["URL", "NOTE", "FILE"], "evidence kind", "URL"), reference: str(e.reference, "evidence reference", { req: true, max: 1000 }), description: str(e.description, "evidence description"), added_by: c.actor.name });
     return u;
   }));
-  const reviewTask = (action) => async (c) => c.store.tx(async (tx) => {
+  const reviewTask = (action) => async (c) => { let note = null; const out = await c.store.tx(async (tx) => {
     const sid = idV(c.body.staff_id, "staff_id"); const a = await tx.one("task_assignments", { task_id: idV(c.params.id, "id"), staff_id: sid }); if (!a) throw notFound("Assignment not found");
     const t = await tx.one("admin_tasks", { id: a.task_id }); await P.assertEditable(tx, sid, monthOf(t.due_date), "task verification");
     if (a.status !== "SUBMITTED") throw conflict("Only a submitted task can be verified or rejected.");
@@ -297,9 +338,10 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       ? { status: boolV(c.body.final) ? "COMPLETED" : "VERIFIED", verification_status: "VERIFIED", verified_by: c.actor.name, verified_at: stamp, management_comment: comment, performance_score: score, completion_date: a.submitted_date || c.today, updated_at: stamp }
       : { status: "IN_PROGRESS", verification_status: "REJECTED", verified_by: c.actor.name, verified_at: stamp, management_comment: comment, performance_score: null, updated_at: stamp };
     const [u] = await tx.update("task_assignments", { id: a.id }, p);
+    note = { sid, title: t.title, comment };
     await P.audit(tx, c.actor, { action: action === "verify" ? "TASK_VERIFIED" : "TASK_REJECTED", entity: "task_assignment", entity_id: a.id, staff_id: sid, month: monthOf(t.due_date), old: { status: a.status, performance_score: a.performance_score }, new: { status: p.status, performance_score: p.performance_score }, reason: comment });
     return u;
-  });
+  }); if (note) await N.notify([note.sid], action === "verify" ? { kind: "TASK_VERIFIED", title: "Task approved: " + note.title, body: note.comment || "Management has verified your submission.", link: "tasks", created_by: c.actor.name } : { kind: "TASK_REJECTED", title: "Task sent back: " + note.title, body: note.comment || "Please redo and resubmit.", link: "tasks", created_by: c.actor.name }); return out; };
   post("/tasks/:id/verify", "mgmt", reviewTask("verify"));
   post("/tasks/:id/reject", "mgmt", reviewTask("reject"));
 
@@ -400,12 +442,14 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   };
   const actionPoints = (v) => (Array.isArray(v) ? v : []).map((a) => ({ text: str(a.text, "action point text", { req: true }), assignee_ids: (a.assignee_ids || []).map((x) => idV(x, "assignee")), due_date: dateV(a.due_date, "action point due_date", false), priority: oneOf(a.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), task_id: a.task_id || null }));
   post("/meetings", "mgmt", async (c) => {
-    const b = c.body;
-    return c.store.tx(async (tx) => {
+    const b = c.body; let pids = [];
+    const mtg = await c.store.tx(async (tx) => {
       const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
       const ids = Array.isArray(b.required_staff_ids) && b.required_staff_ids.length ? b.required_staff_ids.map((x) => idV(x, "required_staff_ids")) : (await P.adminStaff(tx)).map((s) => s.id);
-      await syncParticipants(tx, m, ids); return m;
+      await syncParticipants(tx, m, ids); pids = ids; return m;
     });
+    await N.notify(pids, { kind: "MEETING", title: "Meeting: " + mtg.title, body: `${String(mtg.meeting_date).slice(0, 10)}${mtg.meeting_time ? " at " + String(mtg.meeting_time).slice(0, 5) : ""}${mtg.location ? " - " + mtg.location : ""}`, link: "me", created_by: c.actor.name });
+    return mtg;
   });
   patch("/meetings/:id", "mgmt", async (c) => c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {};
@@ -438,17 +482,17 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     }
     return out;
   }));
-  post("/meetings/:id/convert-actions", "mgmt", async (c) => c.store.tx(async (tx) => {
+  post("/meetings/:id/convert-actions", "mgmt", async (c) => { const made = []; const out = await c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
     const pts = (m.action_points || []).map((x) => ({ ...x })); let created = 0;
     for (const ap of pts) {
       if (ap.task_id || !ap.assignee_ids || !ap.assignee_ids.length || !ap.due_date) continue;
       const t = await createTasks(tx, c, { title: ap.text.slice(0, 300), description: `Action point from meeting: ${m.title} (${m.meeting_date})`, office_id: null, staff_ids: ap.assignee_ids, scope: "STAFF", priority: ap.priority || "MEDIUM", start_date: m.meeting_date, due_date: ap.due_date, expected_output: null, kpi_id: null, meeting_id: m.id });
-      ap.task_id = t.id; created++;
+      ap.task_id = t.id; created++; made.push(t);
     }
     await tx.update("meetings", { id: m.id }, { action_points: pts });
     return { created, skipped: pts.length - created, action_points: pts };
-  }));
+  }); for (const t of made) await N.notify(t.assignees.map((a) => a.id), { kind: "TASK_ASSIGNED", title: "New task: " + t.title, body: `Due ${String(t.due_date).slice(0, 10)}. From a meeting action point.`, link: "tasks", created_by: c.actor.name }); return out; });
 
   // ======================= weekly reports =======================
   const reportText = ["activities", "tasks_completed", "tasks_pending", "challenges", "achievements", "evidence", "next_priorities"];
@@ -482,14 +526,15 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   post("/reports", "any", (c) => saveReport(c, null));
   patch("/reports/:id", "any", (c) => saveReport(c, idV(c.params.id, "id")));
-  post("/reports/:id/review", "mgmt", async (c) => c.store.tx(async (tx) => {
+  post("/reports/:id/review", "mgmt", async (c) => { let note = null; const out = await c.store.tx(async (tx) => {
     const r = await tx.one("weekly_reports", { id: idV(c.params.id, "id") }); if (!r) throw notFound("Report not found");
     if (r.status !== "SUBMITTED") throw conflict("Only a submitted report can be reviewed."); await P.assertEditable(tx, r.staff_id, monthOf(r.week_start), "report reviews");
     const decision = oneOf(c.body.decision, ["APPROVED", "REJECTED"], "decision"), comment = str(c.body.comment, "comment", { req: decision === "REJECTED" });
+    note = { sid: r.staff_id, week: r.week_start, decision, comment };
     const [u] = await tx.update("weekly_reports", { id: r.id }, { status: decision, reviewed_by: c.actor.name, reviewed_at: new Date().toISOString(), review_comment: comment });
     await P.audit(tx, c.actor, { action: decision === "APPROVED" ? "REPORT_APPROVED" : "REPORT_REJECTED", entity: "weekly_report", entity_id: r.id, staff_id: r.staff_id, month: monthOf(r.week_start), old: { status: r.status }, new: { status: decision }, reason: comment });
     return u;
-  }));
+  }); if (note) await N.notify([note.sid], { kind: "REPORT_" + note.decision, title: note.decision === "APPROVED" ? "Weekly report approved" : "Weekly report needs changes", body: `Report for the week of ${String(note.week).slice(0, 10)}.${note.comment ? "\n" + note.comment : ""}`, link: "rep", created_by: c.actor.name }); return out; });
 
   // ======================= deliverables =======================
   get("/deliverables", "any", async (c) => {
@@ -500,7 +545,9 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   post("/deliverables", "mgmt", async (c) => {
     const b = c.body, s = await adminOf(c.store, b.staff_id);
-    return c.store.insert("deliverables", { staff_id: s.id, office_id: s.office_id, title: str(b.title, "title", { req: true, max: 300 }), deliverable_type: str(b.deliverable_type, "deliverable_type", { max: 80 }), description: str(b.description, "description"), task_id: b.task_id ? idV(b.task_id, "task_id") : null, expected_date: dateV(b.expected_date, "expected_date"), created_by: c.actor.name });
+    const dv = await c.store.insert("deliverables", { staff_id: s.id, office_id: s.office_id, title: str(b.title, "title", { req: true, max: 300 }), deliverable_type: str(b.deliverable_type, "deliverable_type", { max: 80 }), description: str(b.description, "description"), task_id: b.task_id ? idV(b.task_id, "task_id") : null, expected_date: dateV(b.expected_date, "expected_date"), created_by: c.actor.name });
+    await N.notify([s.id], { kind: "DELIVERABLE", title: "New deliverable: " + dv.title, body: dv.expected_date ? "Expected by " + String(dv.expected_date).slice(0, 10) + "." : null, link: "deliv", created_by: c.actor.name });
+    return dv;
   });
   patch("/deliverables/:id", "mgmt", async (c) => {
     const d = await c.store.one("deliverables", { id: idV(c.params.id, "id") }); if (!d) throw notFound("Deliverable not found"); await P.assertEditable(c.store, d.staff_id, monthOf(d.expected_date), "this deliverable");

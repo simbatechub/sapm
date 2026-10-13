@@ -8,7 +8,7 @@
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
     "setup": "node src/migrate.js && node src/seed.js",
-    "test": "node --test tests/engine.test.js tests/admin.api.test.js tests/auth.test.js",
+    "test": "node --test tests/engine.test.js tests/admin.api.test.js tests/auth.test.js tests/notify.test.js",
     "test:ui": "bash tests/ui/run.sh"
   },
   "dependencies": {

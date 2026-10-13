@@ -224,6 +224,9 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await p2.setInputFiles("input[type=file]", { name: "report.txt", mimeType: "text/plain", buffer: Buffer.from("Ran two workshops") });
     await p2.waitForFunction(() => document.querySelector("#rf_activities").value.includes("Ran two workshops"));
     await p2.locator("button", { hasText: "Submit report" }).click(); await p2.waitForFunction(() => /2026-10-12/.test(document.querySelector("main").innerText) && /Submitted reports cannot be edited/.test(document.querySelector("main").innerText), null, { timeout: 4000 });
+    await p2.locator("aside nav button", { hasText: "Notifications" }).click(); await p2.waitForSelector("text=Turn on phone notifications");
+    ok((await p2.locator("main").innerText()).includes("New task:"), "assigned tasks show up as notifications");
+    await p2.locator("button", { hasText: "Mark all as read" }).click(); await p2.waitForFunction(() => document.querySelector("main button:disabled") !== null);
     await p2.close();
   });
   await step("login rate limit: repeated wrong codes are locked out", async () => {

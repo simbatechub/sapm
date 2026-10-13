@@ -6,6 +6,7 @@ const path = require("path");
 const { pool, query } = require("./db");
 const { pgStore } = require("./admin/store");
 const { ensureSchema } = require("./admin/migrate");
+const { createNotifier } = require("./admin/notify");
 const { createApi, mount } = require("./admin/api");
 const { securityHeaders } = require("./security");
 const { createAuth } = require("./admin/auth");
@@ -506,7 +507,10 @@ app.get(
 );
 
 // ---- administrative performance system (/api/admin/*) ----
-mount(app, createApi({ store: adminStore, ready: adminReady }));
+const notifier = createNotifier({ store: adminStore });
+mount(app, createApi({ store: adminStore, ready: adminReady, notifier }));
+// Timed reminders (weekly report opening/closing, tasks due). Each reminder is sent once; running often is safe.
+adminReady.then(() => { const tick = () => notifier.runReminders().catch(() => {}); setTimeout(tick, 20000); setInterval(tick, 15 * 60 * 1000).unref(); }, () => {});
 
 // ---- unknown API routes: clear JSON instead of an HTML 404 ----
 app.use("/api", (req, res) =>

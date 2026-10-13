@@ -297,6 +297,29 @@ table("performance_comments", {
   author: "TEXT",
   created_at: TIMESTAMP,
 }, { indexes: [["staff_id", "month"]] });
+table("notifications", {
+  id: "SERIAL PRIMARY KEY",
+  staff_id: FK("staff"),
+  kind: "TEXT NOT NULL DEFAULT 'INFO'",
+  title: "TEXT NOT NULL",
+  body: "TEXT",
+  link: "TEXT",
+  dedupe_key: "TEXT",
+  read_at: "TIMESTAMPTZ",
+  email_status: "TEXT",
+  push_status: "TEXT",
+  created_by: "TEXT",
+  created_at: TIMESTAMP,
+}, { indexes: [["staff_id", "created_at"], ["dedupe_key"]] });
+table("push_subscriptions", {
+  id: "SERIAL PRIMARY KEY",
+  staff_id: FK("staff"),
+  endpoint: "TEXT NOT NULL UNIQUE",
+  p256dh: "TEXT NOT NULL",
+  auth: "TEXT NOT NULL",
+  user_agent: "TEXT",
+  created_at: TIMESTAMP,
+}, { indexes: [["staff_id"]] });
 table("performance_audit_logs", {
   id: "SERIAL PRIMARY KEY",
   actor: "TEXT",

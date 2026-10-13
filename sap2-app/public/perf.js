@@ -248,7 +248,7 @@ ${tbl(['Who', 'Used for', 'Status', ''], [`<tr><td><b>Administrator</b></td><td>
   function pfSettings() {
     const d = need('settings', () => A('/settings')); if (!d) return loading(); if (bad(d)) return errBox(d);
     const s = d.settings;
-    return accessSection() + `<div class="fm">These rules drive every score. Changes apply to scores that are not yet finalized; finalized and closed months keep the rules they were calculated with.</div>
+    return accessSection() + notifSection() + `<div class="fm">These rules drive every score. Changes apply to scores that are not yet finalized; finalized and closed months keep the rules they were calculated with.</div>
 <h2 class="pf-h">Staff attendance</h2><div class="c" style="max-width:640px"><label style="display:flex;gap:10px;align-items:center"><input id="s_att" type="checkbox" ${ATT ? 'checked' : ''} style="width:auto"> <span><b>Track staff attendance</b><span class="pf-note"> Turn off if your staff work remotely. The Staff Attendance page, attendance scores and attendance alerts are hidden, and the other score weights are shared out automatically. Nothing already recorded is deleted.</span></span></label></div>
 <h2 class="pf-h">Score weights (must add up to 100)</h2><div class="pf-grid">${Object.keys(WL).filter(k => ATT || k !== 'attendance').map(k => `<div class="c"><div class="l">${WL[k]}</div><input id="w_${k}" type="number" min="0" value="${s.weights[k]}" style="width:100%;margin-top:6px"></div>`).join('')}</div>
 <h2 class="pf-h">Payment bands</h2><div class="pf-sub">Score at or above "from" earns that share of salary. Include a band starting at 0.</div>
@@ -534,12 +534,14 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
   try { const s = JSON.parse(sessionStorage.getItem('sap2staff') || 'null'); if (s && s.id && s.code) window.SP = s } catch (err) { }
   const portalOn = () => !!window.SP;
   function portalExit() { logout() }
-  const PT = [['me', 'My performance'], ['tasks', 'My tasks'], ['acts', 'My activities'], ['rep', 'Weekly report'], ['deliv', 'Deliverables']];
+  const PT = [['me', 'My performance'], ['tasks', 'My tasks'], ['acts', 'My activities'], ['rep', 'Weekly report'], ['deliv', 'Deliverables'], ['notif', 'Notifications']];
   function renderPortal() {
-    $('nv').innerHTML = PT.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${l}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
-    $('bt').innerHTML = PT.slice(0, 4).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${l.replace('My ', '')}</button>`).join('');
+    const lab = (k, l) => k === 'notif' && X.unread ? `${l} <span class="b sbC">${X.unread}</span>` : l;
+    $('nv').innerHTML = PT.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l)}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
+    $('bt').innerHTML = PT.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts'))}</button>`).join('');
+    if (!X.poll) { X.poll = setInterval(pollUnread, 60000); pollUnread() }
     const m = X.pm; let body;
-    if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else body = pme();
+    if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
     $('m').innerHTML = mh() + body;
   }
   function pme() {
@@ -589,6 +591,49 @@ ${banner}<div class="c">${locked ? '' : `<div id="rdrop" style="border:2px dashe
   function rfile(f) { if (!f) return; if (f.size > 200000) return toast('File too large - paste the text or use a link', 1); const r = new FileReader(); r.onload = () => { const t = document.getElementById('rf_activities'); if (t) t.value = (t.value ? t.value + '\n\n' : '') + String(r.result).slice(0, 20000); toast('Report loaded - check it, then Save or Submit') }; r.readAsText(f) }
   function rdrop(ev) { ev.preventDefault(); const f = ev.dataTransfer && ev.dataTransfer.files[0]; if (f && !/\.(txt|md|csv|json)$/i.test(f.name)) return toast('Only text files can be read here. Upload PDF/Word to Drive and paste the link under Evidence.', 1); rfile(f) }
   async function pSaveRep(submit) { const b = { week_start: X.rw || mondayOf(nowYmd()), submit }; RF.forEach(([k]) => b[k] = V('rf_' + k)); try { await A('/reports', { method: 'POST', body: b }); toast(submit ? 'Report submitted' : 'Draft saved'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
+  /* ---------- notifications (staff) ---------- */
+  async function pollUnread() {
+    if (!portalOn()) { clearInterval(X.poll); X.poll = null; return }
+    try { const d = await A('/notifications'); const old = X.unread || 0; X.unread = d.unread; if (d.unread !== old) { if (d.unread > old && old !== undefined && X.pt !== 'notif') toast('You have a new notification'); if (X.pt === 'notif') X.c = {}; render() } } catch (err) { }
+  }
+  const ago = iso => { const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' }) };
+  function pnotif() {
+    const d = need('notifs', () => A('/notifications')); if (!d) return loading(); if (bad(d)) return errBox(d);
+    const cfg = need('notifcfg', () => A('/notifications/config')) || {};
+    X.unread = d.unread;
+    const phone = d.devices ? `<span class="b sbS">Phone notifications ON (${d.devices} device${d.devices > 1 ? 's' : ''})</span>` : '<span class="b sbN">Phone notifications OFF</span>';
+    return `<h1>Notifications</h1><div class="p">New tasks, reviews, meetings and report reminders appear here${cfg.email ? ' and are emailed to you' : ''}.</div>
+<div class="c" style="margin-bottom:14px"><div class="row" style="margin:0;gap:8px;align-items:center">${phone}<button class="btn pr" onclick="PF.pPush()">${d.devices ? 'Re-enable on this device' : 'Turn on phone notifications'}</button><button class="btn" onclick="PF.pTestNotif()">Send me a test</button><button class="btn" onclick="PF.pReadAll()" ${d.unread ? '' : 'disabled'}>Mark all as read</button></div>
+<div class="pf-note" style="margin-top:8px">Android: tap "Turn on phone notifications" and allow. iPhone: first tap Share, then "Add to Home Screen", open SAP2 from the Home Screen icon, then turn them on.</div></div>
+${d.items.length ? d.items.map(n => `<div class="c" style="margin:8px 0;cursor:pointer;${n.read_at ? 'opacity:.7' : 'border-left:4px solid var(--ac,#c9a227)'}" onclick="PF.pOpenNotif(${n.id},'${e(n.link || '')}')"><div class="row" style="margin:0;justify-content:space-between"><b>${e(n.title)}</b><span class="pf-note">${ago(n.created_at)}</span></div>${n.body ? `<div class="pf-note" style="white-space:pre-line">${e(n.body)}</div>` : ''}</div>`).join('') : '<div class="c">Nothing yet.</div>'}`;
+  }
+  async function pOpenNotif(id, link) { try { await A('/notifications/read', { method: 'POST', body: { ids: [id] } }) } catch (err) { } X.c = {}; if (link && PT.some(([k]) => k === link)) X.pt = link; pollUnread(); render() }
+  async function pReadAll() { try { await A('/notifications/read', { method: 'POST', body: {} }); X.c = {}; X.unread = 0; render() } catch (err) { toast(err.message, 1) } }
+  async function pTestNotif() { try { await A('/notifications/test', { method: 'POST', body: {} }); toast('Test sent - it appears below' + ((need('notifcfg', () => A('/notifications/config')) || {}).email ? ' and by email' : '')); X.c = {}; setTimeout(pollUnread, 1500); render() } catch (err) { toast(err.message, 1) } }
+  const u8 = b64 => { const p = '='.repeat((4 - b64.length % 4) % 4), r = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))) };
+  const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  async function pPush() {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return toast('This browser cannot receive phone notifications. On iPhone use Share > Add to Home Screen first, then open SAP2 from that icon.', 1);
+      const cfg = await A('/notifications/config'); if (!cfg.push) return toast('Phone notifications are not switched on yet. Please ask management.', 1);
+      if ((await Notification.requestPermission()) !== 'granted') return toast('Notifications were blocked. Allow them in your browser/site settings, then try again.', 1);
+      const reg = await navigator.serviceWorker.register('/sw.js'); await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(cfg.publicKey) });
+      await A('/notifications/push-subscribe', { method: 'POST', body: { endpoint: sub.endpoint, keys: { p256dh: b64u(sub.getKey('p256dh')), auth: b64u(sub.getKey('auth')) }, user_agent: navigator.userAgent.slice(0, 200) } });
+      toast('Phone notifications are on for this device'); X.c = {}; render();
+    } catch (err) { toast(err.message || 'Could not turn on notifications', 1) }
+  }
+  /* ---------- notifications (management) ---------- */
+  function notifSection() {
+    const d = need('notifsAdmin', () => A('/notifications')); if (!d) return '';
+    if (bad(d)) return '';
+    const on = (v, t) => v ? `<span class="b sbS">${t}</span>` : `<span class="b sbN">${t} - not set up</span>`;
+    return `<h2 class="pf-h">Notifications</h2><div class="c" style="margin-bottom:14px"><div class="row" style="margin:0;gap:8px;align-items:center">${on(d.email, 'Email' + (d.email ? ' (' + d.email + ')' : ''))}${on(d.push, 'Phone alerts')}<span class="pf-note">${d.devices || 0} phone(s) registered</span><button class="btn pr" onclick="PF.announce()">Send announcement</button></div>
+<div class="pf-note" style="margin-top:8px">Staff are notified automatically about new tasks, approvals/rejections, report reviews, meetings, deliverables, and report/task reminders.</div>
+${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone'], d.items.slice(0, 15).map(n => `<tr><td>${ago(n.created_at)}</td><td>${e(n.staff_name || '')}</td><td class="wrap"><b>${e(n.title)}</b></td><td>${n.read_at ? 'Read' : 'Unread'}</td><td>${e(n.email_status || '-')}</td><td>${e(n.push_status || '-')}</td></tr>`), 'No notifications sent yet.', 'pf-tbl-small')}</div>`;
+  }
+  function announce() { M(`<h2 style="font-size:24px">Send announcement</h2><div class="pf-note">Goes to all active administrative staff (in the app, by email and to phones).</div><div class="pf-fg">${fg('an_t', 'Title *', inp('an_t', ''))}${fg('an_b', 'Message', '<textarea id="an_b"></textarea>')}</div>${mfoot('Send', 'PF.doAnnounce()')}`) }
+  async function doAnnounce() { try { const r = await A('/notifications/send', { method: 'POST', body: { title: V('an_t'), body: V('an_b') } }); mcl(); toast('Sent to ' + r.sent + ' staff'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
   function pdeliv() {
     const d = need('md:' + X.pm, () => A('/deliverables?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
     return `<h1>Deliverables</h1><div class="p">Work products management expects from you.</div>${mnav()}${tbl(['Deliverable', 'Expected', 'Status', 'Feedback', ''], d.map(x => `<tr><td class="wrap"><b>${e(x.title)}</b><div class="pf-note">${e(x.deliverable_type || '')}</div></td><td>${x.expected_date}${x.overdue ? ' <span class="b sbC">Overdue</span>' : ''}</td><td>${statusBadge(x.status)}</td><td class="wrap pf-det">${e(x.review_comment || '')}</td><td>${['EXPECTED', 'REJECTED'].includes(x.status) ? `<button class="btn pr" onclick="PF.pDelivSub(${x.id})">Submit</button>` : ''}</td></tr>`), 'No deliverables this month.')}`;
@@ -610,7 +655,7 @@ ${banner}<div class="c">${locked ? '' : `<div id="rdrop" style="border:2px dashe
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,
     recordAtt, saveAtt, newMeeting, saveMeeting, openMeeting, saveMeetAtt, saveMinutes, newReport, saveReport, openReport, doReport, newAct, saveAct, reviewAct, saveKpiResult, csv, approvePay,
-    portalOn, portalExit, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
+    portalOn, portalExit, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
     pm: () => X.pm, setMonthFromPayroll: m => { X.pm = m }
   };
 })();

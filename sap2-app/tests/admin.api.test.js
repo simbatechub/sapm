@@ -7,6 +7,7 @@ const { seedDefaults } = require("../src/admin/migrate");
 const { createApi } = require("../src/admin/api");
 const P = require("../src/admin/performance");
 const { adminPayrollRow } = require("../src/admin/payroll");
+const { createNotifier } = require("../src/admin/notify");
 const seed = require("../data/seed.json");
 
 const TODAY = "2026-10-20";
@@ -15,11 +16,12 @@ async function setup() {
   const store = memoryStore();
   for (const s of seed) await store.insert("staff", { name: s.name, email: s.email, phone: s.phone, bank: s.bank, account_number: s.account_number, staff_type: s.staff_type, role: s.role, monthly_salary: s.monthly_salary, per_appearance_rate: 20000 });
   const summary = await seedDefaults(store);
-  const api = createApi({ store, today: () => TODAY, now: () => new Date(globalThis.__NOW || TODAY + "T10:00:00Z") });
+  const notifier = createNotifier({ store, env: {}, log: { error() {}, log() {} } });
+  const api = createApi({ store, today: () => TODAY, now: () => new Date(globalThis.__NOW || TODAY + "T10:00:00Z"), notifier });
   const call = async (method, path, { query, body, actor = MGT } = {}) => { const r = await api.handle(method, path, { query, body, actor }); return r || { status: 404, body: null }; };
   const ok = async (...a) => { const r = await call(...a); assert.equal(r.status, 200, `${a[0]} ${a[1]} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   const staff = Object.fromEntries((await store.find("staff")).map((s) => [s.name, s]));
-  return { store, api, call, ok, staff, summary };
+  return { store, api, call, ok, staff, summary, notifier };
 }
 const staffActor = (s) => ({ role: "staff", staffId: s.id, name: s.name });
 
@@ -318,4 +320,25 @@ test("attendance can be switched off in Settings: scores and month closing stop 
   const at = prof.calc.components.find((c) => c.component === "attendance"); assert.equal(at.hidden, true); assert.equal(at.effective_weight, 0);
   await ok("PUT", "/settings", { body: { settings: { attendance_enabled: true }, reason: "Back on" } });
   assert.ok((await ok("GET", "/months/" + M)).checks.some((c) => /No attendance recorded/.test(c.message)), "switching back on restores it");
+});
+
+test("notifications: new task, review, report open reminder, read/unread, privacy", async () => {
+  const { ok, call, staff, notifier } = await setup(); const ada = staff["Adelana Victor"], isi = staff["Isibor Blessing"], A = staffActor(ada), I = staffActor(isi);
+  const t = await ok("POST", "/tasks", { body: { title: "Plan the school visit", staff_ids: [ada.id, isi.id], due_date: "2026-10-25", priority: "HIGH" } });
+  const mine = await ok("GET", "/notifications", { actor: A }); assert.equal(mine.unread, 1); assert.equal(mine.items[0].kind, "TASK_ASSIGNED"); assert.match(mine.items[0].title, /Plan the school visit/);
+  assert.equal((await ok("GET", "/notifications", { actor: I })).items.length, 1);
+  assert.equal((await ok("POST", "/notifications/read", { actor: A, body: {} })).marked, 1); assert.equal((await ok("GET", "/notifications", { actor: A })).unread, 0);
+  assert.equal((await ok("GET", "/notifications", { actor: I })).unread, 1, "reading one person's list does not touch another's");
+  await ok("POST", `/tasks/${t.id}/submit`, { actor: A, body: { actual_output: "done", evidence_url: "https://x.co" } });
+  await ok("POST", `/tasks/${t.id}/reject`, { body: { staff_id: ada.id, comment: "Add the dates" } });
+  assert.equal((await ok("GET", "/notifications", { actor: A })).items[0].kind, "TASK_REJECTED");
+  assert.equal((await call("POST", "/notifications/send", { actor: A, body: { title: "x" } })).status, 403);
+  const sent = await ok("POST", "/notifications/send", { body: { title: "Team update", body: "Meeting at 12", staff_ids: [ada.id] } }); assert.equal(sent.sent, 1);
+  assert.equal((await call("POST", "/notifications/push-subscribe", { actor: A, body: { endpoint: "http://insecure", keys: { p256dh: "a", auth: "b" } } })).status, 400);
+  await ok("POST", "/notifications/push-subscribe", { actor: A, body: { endpoint: "https://push.example.com/x", keys: { p256dh: "AAAA", auth: "BBBB" } } }); assert.equal((await ok("GET", "/notifications", { actor: A })).devices, 1);
+  // reminders: Friday 2026-10-16 08:00 Lagos -> report window for 12-18 Oct is open
+  const r1 = await notifier.runReminders(new Date("2026-10-16T07:00:00Z")); assert.ok(r1.report_open >= 2);
+  const r2 = await notifier.runReminders(new Date("2026-10-16T08:00:00Z")); assert.equal(r2.report_open, 0, "each reminder is sent once");
+  assert.ok((await ok("GET", "/notifications", { actor: A })).items.some((i) => i.kind === "REPORT_OPEN"));
+  await notifier.idle();
 });
