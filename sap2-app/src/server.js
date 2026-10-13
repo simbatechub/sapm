@@ -33,7 +33,7 @@ app.use(
   }),
 );
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "..", "public"))); // serves the SAP2 frontend
+app.use(express.static(path.join(__dirname, "..", "public"), { etag: true, setHeaders: (res, f) => { if (/\.(js|html)$/.test(f)) res.setHeader("Cache-Control", "no-cache"); } })); // serves the SAP2 frontend; no-cache = always revalidate so updates show immediately
 
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const isMonth = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m || "");
