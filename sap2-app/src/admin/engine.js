@@ -219,7 +219,12 @@ function calculate(data, settingsIn, today) {
     c.score_pct = c.raw_score === null ? null : r2(c.raw_score * 100);
     c.points = c.points === null ? null : r2(c.points); c.effective_weight = r2(c.effective_weight);
   }
-  final = wTotal ? r2(final) : 0;
+  // Month still running: each week is worth an equal share of the month (4 weeks = 25% each), so a perfect
+  // score after 2 of 4 weeks is 50%, not 100%. Finished months are not scaled.
+  const mWeeks = weeksOfMonth(month), started = mWeeks.filter((w) => w <= today).length;
+  const progress = mWeeks.length && started < mWeeks.length ? Math.max(1, started) / mWeeks.length : 1;
+  const paceScore = wTotal ? r2(final) : 0; // quality of the work done so far (0-100), not scaled
+  final = wTotal ? r2(final * progress) : 0;
   const missingComps = comps.filter((c) => c.raw_score === null && !c.hidden).map((c) => c.component);
   const warnings = [];
   if (!data.office) warnings.push("Staff member has no office assigned: KPI score cannot be calculated.");
@@ -232,10 +237,10 @@ function calculate(data, settingsIn, today) {
   const pay = paymentFor(num(staff.monthly_salary), final, settings);
   const below = settings.exit_review_below;
   const priorLow = (data.priorScores || []).slice(0, Math.max(0, settings.exit_review_consecutive - 1));
-  const exit = wTotal > 0 && final < below && priorLow.length >= settings.exit_review_consecutive - 1 && priorLow.every((s) => s !== null && s < below);
+  const exit = wTotal > 0 && paceScore < below && priorLow.length >= settings.exit_review_consecutive - 1 && priorLow.every((s) => s !== null && s < below);
   return {
     staff_id: staff.id, month, office_id: data.office ? data.office.id : null, office: data.office ? data.office.name : null,
-    final_score: final, ...pay, components: comps, incomplete, data_quality: { warnings, missing_components: missingComps, missing_kpis: k.details.missing || [] },
+    final_score: final, pace_score: paceScore, month_progress_pct: r2(progress * 100), weeks_elapsed: Math.min(started, mWeeks.length) || 0, weeks_in_month: mWeeks.length, ...pay, components: comps, incomplete, data_quality: { warnings, missing_components: missingComps, missing_kpis: k.details.missing || [] },
     exit_review_required: exit, exit_review_label: exit ? "EXIT / MANAGEMENT REVIEW REQUIRED" : null,
     weights_total: COMPONENTS.reduce((x, c) => x + num(settings.weights[c]), 0),
   };
@@ -255,8 +260,8 @@ function computeAlerts(ctx, settingsIn, today) {
   const tk = calc.components.find((c) => c.component === "task").details;
   if (tk.awaiting_verification >= settings.unverified_alert_count) add("UNVERIFIED_TASKS", "INFO", `${tk.awaiting_verification} submitted tasks are waiting for management verification`);
   const hasData = calc.components.some((c) => c.raw_score !== null);
-  if (hasData && calc.final_score < settings.exit_review_below) add("PERFORMANCE_BELOW_30", "CRITICAL", `score ${calc.final_score}% is below ${settings.exit_review_below}% (no payment band)`);
-  else if (hasData && calc.final_score < 50) add("PERFORMANCE_BELOW_50", "WARNING", `score ${calc.final_score}% is below 50%`);
+  if (hasData && calc.pace_score < settings.exit_review_below) add("PERFORMANCE_BELOW_30", "CRITICAL", `score ${calc.pace_score}% is below ${settings.exit_review_below}% (no payment band)`);
+  else if (hasData && calc.pace_score < 50) add("PERFORMANCE_BELOW_50", "WARNING", `score ${calc.pace_score}% is below 50%`);
   if (calc.exit_review_required) add("TWO_MONTHS_BELOW_30", "CRITICAL", `below ${settings.exit_review_below}% for ${settings.exit_review_consecutive} consecutive months: EXIT / MANAGEMENT REVIEW REQUIRED`);
   const kp = calc.components.find((c) => c.component === "kpi").details;
   (kp.kpis || []).filter((k) => k.ratio < settings.kpi_missed_below_pct).forEach((k) => add("KPI_MISSED", "INFO", `KPI "${k.name}" at ${k.ratio}% of target`, String(k.kpi_id)));

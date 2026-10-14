@@ -12,12 +12,12 @@ const seed = require("../data/seed.json");
 
 const TODAY = "2026-10-20";
 const MGT = { role: "management", name: "Mr Billy" };
-async function setup() {
+async function setup() { globalThis.__TODAY = undefined;
   const store = memoryStore();
   for (const s of seed) await store.insert("staff", { name: s.name, email: s.email, phone: s.phone, bank: s.bank, account_number: s.account_number, staff_type: s.staff_type, role: s.role, monthly_salary: s.monthly_salary, per_appearance_rate: 20000 });
   const summary = await seedDefaults(store);
   const notifier = createNotifier({ store, env: {}, log: { error() {}, log() {} } });
-  const api = createApi({ store, today: () => TODAY, now: () => new Date(globalThis.__NOW || TODAY + "T10:00:00Z"), notifier });
+  const api = createApi({ store, today: () => globalThis.__TODAY || TODAY, now: () => new Date(globalThis.__NOW || TODAY + "T10:00:00Z"), notifier });
   const call = async (method, path, { query, body, actor = MGT } = {}) => { const r = await api.handle(method, path, { query, body, actor }); return r || { status: 404, body: null }; };
   const ok = async (...a) => { const r = await call(...a); assert.equal(r.status, 200, `${a[0]} ${a[1]} -> ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
   const staff = Object.fromEntries((await store.find("staff")).map((s) => [s.name, s]));
@@ -163,6 +163,11 @@ test("performance: calculate, KPI results, teamwork, payment recommendation, fin
   assert.equal((await call("PUT", "/kpi-results", { body: { kpi_id: foreign.id, staff_id: ada.id, month: M, rating: 9 } })).status, 400); // wrong office KPI
   await ok("PUT", `/performance/${ada.id}/teamwork`, { body: { month: M, rating: 8, comment: "Great teammate" } });
   assert.equal((await call("PUT", `/performance/${ada.id}/teamwork`, { body: { month: M, rating: 5 } })).status, 400);
+  // a month still running is scaled by weeks started: 3 of 4 October weeks have started on the 20th
+  const mid = await ok("POST", `/performance/${ada.id}/calculate`, { body: { month: M } });
+  assert.equal(mid.calc.weeks_in_month, 4); assert.equal(mid.calc.month_progress_pct, 75);
+  assert.ok(Math.abs(mid.calc.final_score - mid.calc.pace_score * 0.75) < 0.02);
+  globalThis.__TODAY = "2026-11-02"; // October is over: no scaling, so the brief's fixed scenarios apply
   // fixed score scenarios from the brief: salary 50,000 -> 65% = 25,000 ; 82% = full ; 27% = 0
   await ok("PUT", "/settings", { body: { settings: { weights: { task: 100, kpi: 0, attendance: 0, reports: 0, productivity: 0, teamwork: 0 } } } });
   for (const [score, pay, status, band] of [[65, 20000, "PARTIAL_PAYMENT", "MODERATE"], [82, 40000, "FULL_PAYMENT", "STRONG"], [27, 0, "NO_PAYMENT", "CRITICAL"], [50, 20000, "PARTIAL_PAYMENT", "MODERATE"], [40, 20000, "PARTIAL_PAYMENT", "NEEDS_IMPROVEMENT"]]) {
