@@ -58,6 +58,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       if (r.method !== method) continue;
       const m = r.re.exec(path); if (!m) continue;
       if (r.guard === "mgmt" && (!actor || actor.role !== "management")) return { status: 403, body: { error: "Management access required" } };
+      if (r.guard === "pa" && !(actor && (actor.role === "management" || actor.pa))) return { status: 403, body: { error: "Management or Personal Assistant access required" } };
       const params = {}; r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
       try { return { status: 200, body: await r.fn({ params, query: query || {}, body: body || {}, actor, store, today: today(), now: now() }) }; }
       catch (e) { return errorResponse(e); }
@@ -199,11 +200,17 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   get("/access", "mgmt", async (c) => P.accessOverview(c.store));
   post("/offices/:id/office-code", "mgmt", async (c) => { const id = idV(c.params.id, "id"); const code = await P.createOfficeCode(c.store, id, c.actor); return { code, note: "Give this to the staff of that office. It is shown only once; the previous code no longer works." }; });
   post("/admin-code", "mgmt", async (c) => ({ code: await P.createAdminCode(c.store, c.actor), note: "This is the new administrator code. Write it down now; the previous code no longer works." }));
+  // Read-only staff directory + schedule for management and the Personal Assistant. Pay, bank and account details are never included.
+  get("/directory", "pa", async (c) => {
+    const offices = await officeMap(c.store);
+    return (await c.store.find("staff", {}, { order: [["name", "asc"]] })).map((s) => ({ id: s.id, name: s.name, role: s.role, staff_type: s.staff_type, active: s.active, email: s.email, phone: s.phone,
+      office: s.office_id ? (offices.get(s.office_id) || {}).name || null : null, campuses: s.campuses || [], skills: s.skills || [], frequency: s.frequency }));
+  });
   get("/me", "any", async (c) => {
     if (c.actor.role !== "staff") return { role: "management", name: c.actor.name };
     const p = await P.staffPerformance(c.store, c.actor.staffId, c.query.month ? monthV(c.query.month) : c.today.slice(0, 7), c.today, { forStaff: true });
     const kpis = p.staff.office_id ? await c.store.find("office_kpis", { office_id: p.staff.office_id, active: true }) : [];
-    return { role: "staff", ...p, kpis };
+    return { role: "staff", pa: !!c.actor.pa, ...p, kpis };
   });
 
   // ======================= notifications =======================
@@ -235,7 +242,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (c.actor.role !== "staff") throw forbid("Only staff can send themselves a test");
     const rows = await N.notify([c.actor.staffId], { kind: "TEST", title: "Test notification", body: "If you can read this on your phone, notifications are working.", link: "notif" }); return { sent: rows.length };
   });
-  post("/notifications/send", "mgmt", async (c) => {
+  post("/notifications/send", "pa", async (c) => {
     const title = str(c.body.title, "title", { req: true, max: 200 }), body = str(c.body.body, "body", { max: 2000 });
     const audience = oneOf(c.body.audience, ["ADMIN", "INSTRUCTORS", "ALL"], "audience", "ADMIN");
     const active = (await c.store.find("staff", { active: true })), types = { ADMIN: ["admin", "both"], INSTRUCTORS: ["instructor", "both"], ALL: ["admin", "both", "instructor"] }[audience];
@@ -247,7 +254,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
 
   // ======================= tasks =======================
   async function listTasks(c) {
-    const q = c.query; const sid = who(c, q.staff_id, { optional: true });
+    const q = c.query; const sid = c.actor.pa ? (q.staff_id ? idV(q.staff_id, "staff_id") : null) : who(c, q.staff_id, { optional: true });
     const asg = await c.store.find("task_assignments", sid ? { staff_id: sid } : {});
     const tasks = new Map((asg.length ? await c.store.find("admin_tasks", { id: [...new Set(asg.map((a) => a.task_id))] }) : []).map((t) => [t.id, t]));
     const names = await staffNames(c.store), offices = await officeMap(c.store);
@@ -575,7 +582,13 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   }));
 
   // ======================= performance =======================
-  get("/performance", "mgmt", async (c) => { const month = monthV(c.query.month); return P.scoreboard(c.store, month, c.today, { office_id: c.query.office_id }); });
+  get("/performance", "pa", async (c) => {
+    const month = monthV(c.query.month), sb = await P.scoreboard(c.store, month, c.today, { office_id: c.query.office_id });
+    if (c.actor.role !== "staff") return sb;
+    // Personal Assistant view: scores and bands only. No salary, pay, settings or detailed workings.
+    return { month: sb.month, month_status: sb.month_status, view_only: true, rows: sb.rows.map((r) => ({ rank: r.rank, staff_id: r.staff_id, name: r.name, role: r.role, office: r.office, task: r.task, kpi: r.kpi, attendance: r.attendance, reports: r.reports, productivity: r.productivity, teamwork: r.teamwork,
+      final_score: r.final_score, pace_score: r.details && r.details.pace_score, month_progress_pct: r.details && r.details.month_progress_pct, band: r.band, band_label: r.band_label, state: r.state, has_data: r.has_data, exit_review_required: r.exit_review_required })) };
+  });
   post("/performance/calculate-all", "mgmt", async (c) => { const month = monthV(c.body.month); const out = []; for (const s of await P.adminStaff(c.store)) { try { const r = await P.calculateAndStore(c.store, s.id, month, c.actor, c.today); out.push({ staff_id: s.id, name: s.name, final_score: r.calc.final_score, status: "CALCULATED" }); } catch (e) { if (e instanceof HttpError) out.push({ staff_id: s.id, name: s.name, status: "SKIPPED", reason: e.message }); else throw e; } } return { month, results: out }; });
   post("/performance/finalize-all", "mgmt", async (c) => { const month = monthV(c.body.month); const out = []; for (const s of await P.adminStaff(c.store)) { try { const r = await P.finalizeReview(c.store, s.id, month, c.actor, { acknowledge_incomplete: boolV(c.body.acknowledge_incomplete) }, c.today); out.push({ staff_id: s.id, name: s.name, final_score: r.calc.final_score, status: "FINALIZED" }); } catch (e) { if (e instanceof HttpError) out.push({ staff_id: s.id, name: s.name, status: "SKIPPED", reason: e.message, warnings: e.extra && e.extra.warnings }); else throw e; } } return { month, results: out }; });
   get("/performance/:staff_id", "any", async (c) => { const sid = who(c, c.params.staff_id); return P.staffPerformance(c.store, sid, monthV(c.query.month), c.today, { forStaff: c.actor.role === "staff" }); });

@@ -26,7 +26,7 @@
   async function act(fn, ok, after) {
     try { const r = await fn(); if (ok) toast(ok); if (after !== false) { X.c = {}; if (after) after(r); render(); } return r } catch (err) { toast(err.message, 1) }
   }
-  const staffList = () => need('staff', () => A('/staff'));
+  const staffList = () => need('staff', () => A(window.SP ? '/directory' : '/staff'));
   const officeList = () => need('offices', () => A('/offices'));
 
   /* ---- shared ui bits ---- */
@@ -535,14 +535,44 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
   const portalOn = () => !!window.SP;
   function portalExit() { logout() }
   const PT = [['me', 'My performance'], ['tasks', 'My tasks'], ['acts', 'My activities'], ['rep', 'Weekly report'], ['deliv', 'Deliverables'], ['notif', 'Notifications']];
+  // Extra read-only screens for the Personal Assistant (she coordinates staff). Pay, bank and salary data are never sent to her.
+  const PA_T = [['sched', 'Weekly schedule'], ['dir', 'All staff'], ['pperf', 'Staff performance'], ['atasks', 'All tasks'], ['ann', 'Send announcement']];
+  const PA_CAMPS = ['Airport Road Campus', 'Ekehuan Campus', 'Ewah Campus', 'Ogida Campus', 'Ugbowo Campus'];
   function renderPortal() {
+    const me0 = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (me0 && me0.pa) X.pa = true;
+    const tabs = PT.concat(X.pa ? PA_T : []);
     const lab = (k, l) => k === 'notif' && X.unread ? `${l} <span class="b sbC">${X.unread}</span>` : l;
-    $('nv').innerHTML = PT.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l)}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
-    $('bt').innerHTML = PT.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts'))}</button>`).join('');
+    $('nv').innerHTML = tabs.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l)}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
+    $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['sched', 'atasks'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks'))}</button>`).join('');
     if (!X.poll) { X.poll = setInterval(pollUnread, 60000); pollUnread() }
-    const m = X.pm; let body;
-    if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
+    let body;
+    if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'ann') body = paAnn();
+    else if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
     $('m').innerHTML = mh() + body;
+  }
+  const paStaff = () => need('pa:dir', () => A('/directory'));
+  function paSched() {
+    const d = paStaff(); if (!d) return loading(); if (bad(d)) return errBox(d);
+    const ins = d.filter(s => s.active && ['instructor', 'both'].includes(s.staff_type));
+    return `<h1>Weekly schedule</h1><div class="p">Campuses and how many times per week each instructor coaches. View only.</div><div class="gr" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${PA_CAMPS.map(c => `<div class="c"><h2 style="font-size:22px;color:var(--or)">${e(c.replace(' Campus', ''))}</h2>${ins.filter(s => s.campuses.includes(c)).map(s => `<div style="padding:6px 0;border-top:1px solid var(--ln)"><b>${e(s.name)}</b><div class="l">${e(s.frequency || '')}${s.skills.length ? ' · ' + e(s.skills.join(', ')) : ''}</div></div>`).join('') || '<div class="l">No instructor yet</div>'}</div>`).join('')}</div>`;
+  }
+  function paDir() {
+    const d = paStaff(); if (!d) return loading(); if (bad(d)) return errBox(d);
+    const q = (X.paq || '').toLowerCase(), rows = d.filter(s => !q || (s.name + ' ' + (s.role || '') + ' ' + (s.office || '')).toLowerCase().includes(q));
+    return `<h1>All staff</h1><div class="p">View only. Pay and bank details are not shown here.</div><input placeholder="Search name, role or office" value="${e(X.paq || '')}" onchange="PF.X.paq=this.value;render()" style="max-width:320px;margin-bottom:10px">${tbl(['Name', 'Role', 'Type', 'Office', 'Campuses', 'Phone', 'Email', 'Status'], rows.map(s => `<tr><td><b>${e(s.name)}</b></td><td class="wrap">${e(s.role || '')}</td><td>${e(label(s.staff_type))}</td><td class="wrap">${e(s.office || '—')}</td><td class="wrap">${e((s.campuses || []).map(c => c.replace(' Campus', '')).join(', ') || '—')}</td><td>${e(s.phone || '—')}</td><td class="wrap">${e(s.email || '—')}</td><td>${s.active ? '<span class="b sbS">Active</span>' : '<span class="b sbN">Inactive</span>'}</td></tr>`))}`;
+  }
+  function paPerf() {
+    const d = need('pa:pb:' + X.pm, () => A('/performance?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
+    return `<h1>Staff performance</h1><div class="p">View only. Scores and bands for administrative staff. Pay amounts are not shown.</div>${mnav()}${tbl(['#', 'Staff', 'Office', 'Score', 'Band', 'Tasks', 'Reports', 'Teamwork'], d.rows.map(r => `<tr><td>${r.rank}</td><td><b>${e(r.name)}</b><div class="pf-note">${e(r.role || '')}</div></td><td class="wrap">${e(r.office || '—')}</td><td>${r.has_data ? `<b>${pc(r.final_score)}</b>${bar(r.final_score)}` : '<span class="pf-mu">Not scored</span>'}</td><td>${r.has_data ? bandBadge(r) : '—'}</td><td>${pc(r.task)}</td><td>${pc(r.reports)}</td><td>${pc(r.teamwork)}</td></tr>`))}<div class="pf-note" style="margin-top:8px">A running month is scored by weeks (each week of the month counts equally), so scores rise as the month goes on.</div>`;
+  }
+  function paTasks() {
+    const d = need('pa:tasks', () => A('/tasks')); if (!d) return loading(); if (bad(d)) return errBox(d);
+    const offs = [...new Set(d.map(t => t.office).filter(Boolean))].sort(), f = X.pao || '';
+    const rows = d.filter(t => !f || t.office === f);
+    return `<h1>All tasks</h1><div class="p">Tasks assigned to every office. View only.</div><div class="row pf-noprint"><label class="l">Office</label><select onchange="PF.X.pao=this.value;render()"><option value="">All offices</option>${offs.map(o => `<option ${o === f ? 'selected' : ''}>${e(o)}</option>`).join('')}</select><span class="pf-mu">${rows.length} task(s)</span></div>${tbl(['Office', 'Assigned to', 'Task', 'Due', 'Status', 'Priority'], rows.map(t => `<tr><td class="wrap">${e(t.office || '—')}</td><td>${e(t.staff_name || '')}</td><td class="wrap" style="min-width:220px"><b>${e(t.title)}</b></td><td>${t.due_date}</td><td>${statusBadge(t.status)}</td><td>${e(label(t.priority))}</td></tr>`))}`;
+  }
+  function paAnn() {
+    return `<h1>Send announcement</h1><div class="p">Send an email (and an in-app / phone notification) to administrative staff, all instructors, everyone, or one person.</div><button class="btn pr" onclick="PF.announce()">Write an announcement</button>`;
   }
   function pme() {
     const d = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
@@ -632,7 +662,7 @@ ${d.items.length ? d.items.map(n => `<div class="c" style="margin:8px 0;cursor:p
 <div class="pf-note" style="margin-top:8px">Staff are notified automatically about new tasks, approvals/rejections, report reviews, meetings, deliverables, and report/task reminders.</div>
 ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.slice(0, 15).map(n => `<tr><td>${ago(n.created_at)}</td><td>${e(n.staff_name || '')}</td><td class="wrap"><b>${e(n.title)}</b></td><td>${n.read_at ? 'Read' : 'Unread'}</td><td>${e(n.email_status || '-')}</td><td>${e(n.push_status || '-')}</td><td>${e(n.sms_status || '-')}</td></tr>`), 'No notifications sent yet.', 'pf-tbl-small')}</div>`;
   }
-  async function announce() { try { if (!staffList() || bad(staffList())) { const d = await A('/staff'); X.c.staff = d } } catch (err) { toast(err.message, 1) } M(`<h2 style="font-size:24px">Send announcement</h2><div class="pf-note">Sent by email (and in the app / to phones for staff who use them).</div><div class="pf-fg">${fg('an_a', 'Send to', selx('an_a', [['ADMIN', 'Administrative staff'], ['INSTRUCTORS', 'All instructors'], ['ALL', 'Everyone (staff and instructors)']], 'ADMIN'))}${fg('an_p', 'Or send to one person only', selx('an_p', [['', '- Use the group above -']].concat(actives().map(x => [x.id, x.name])), ''))}${fg('an_t', 'Title *', inp('an_t', ''))}<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input id="an_s" type="checkbox" style="width:auto"> Also send as SMS (uses SMS credit)</label>${fg('an_b', 'Message', '<textarea id="an_b"></textarea>')}</div>${mfoot('Send', 'PF.doAnnounce()')}`) }
+  async function announce() { try { if (!staffList() || bad(staffList())) { const d = await A(portalOn() ? '/directory' : '/staff'); X.c.staff = d } } catch (err) { toast(err.message, 1) } M(`<h2 style="font-size:24px">Send announcement</h2><div class="pf-note">Sent by email (and in the app / to phones for staff who use them).</div><div class="pf-fg">${fg('an_a', 'Send to', selx('an_a', [['ADMIN', 'Administrative staff'], ['INSTRUCTORS', 'All instructors'], ['ALL', 'Everyone (staff and instructors)']], 'ADMIN'))}${fg('an_p', 'Or send to one person only', selx('an_p', [['', '- Use the group above -']].concat(actives().map(x => [x.id, x.name])), ''))}${fg('an_t', 'Title *', inp('an_t', ''))}<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input id="an_s" type="checkbox" style="width:auto"> Also send as SMS (uses SMS credit)</label>${fg('an_b', 'Message', '<textarea id="an_b"></textarea>')}</div>${mfoot('Send', 'PF.doAnnounce()')}`) }
   async function doAnnounce() { try { const r = await A('/notifications/send', { method: 'POST', body: { title: V('an_t'), body: V('an_b'), audience: V('an_a'), staff_ids: V('an_p') ? [Number(V('an_p'))] : undefined, sms: VC('an_s') } }); mcl(); toast('Sent to ' + r.sent + ' staff'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
   function pdeliv() {
     const d = need('md:' + X.pm, () => A('/deliverables?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);

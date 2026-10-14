@@ -351,3 +351,24 @@ test("notifications: new task, review, report open reminder, read/unread, privac
   assert.ok((await ok("GET", "/notifications", { actor: A })).items.some((i) => i.kind === "REPORT_OPEN"));
   await notifier.idle();
 });
+
+test("Personal Assistant: read-only directory, scoreboard (no pay), all tasks, can announce; nothing else", async () => {
+  const { ok, call, staff } = await setup();
+  const names = Object.keys(staff), pick = (n) => staff[names.find((x) => x.includes(n))];
+  const pa = { ...staffActor(pick("Isibor")), pa: true }, other = staffActor(pick("Adelana"));
+  await ok("POST", "/staff/" + pa.staffId + "/office", { body: { office_id: (await ok("GET", "/offices")).find((o) => o.code === "PERSONAL_ASSISTANT").id } });
+  const dir = await ok("GET", "/directory", { actor: pa });
+  assert.ok(dir.length >= 10 && dir.every((s) => !("monthly_salary" in s) && !("account_number" in s) && !("bank" in s) && !("per_appearance_rate" in s) && !("salary" in s)));
+  assert.ok(dir.every((s) => Array.isArray(s.campuses)));
+  const sb = await ok("GET", "/performance", { actor: pa, query: { month: "2026-10" } });
+  assert.ok(sb.rows.length && sb.rows.every((r) => !("salary" in r) && !("recommended_pay" in r) && !("payroll" in r) && !("details" in r)) && !("settings" in sb));
+  for (const n of ["Adelana", "Chidozie", "Harrison"]) await ok("POST", "/tasks", { body: { title: "T for " + n, scope: "STAFF", staff_ids: [pick(n).id], due_date: "2026-10-30" } });
+  const all = await ok("GET", "/tasks", { actor: pa }); assert.ok(new Set(all.map((t) => t.staff_id)).size > 2, "PA sees every office's tasks");
+  const sent = await ok("POST", "/notifications/send", { actor: pa, body: { title: "Hello team", body: "x", audience: "ADMIN" } }); assert.ok(sent.sent >= 1);
+  // everything else stays closed to her
+  for (const [m, path, body] of [["POST", "/tasks", { title: "x", scope: "STAFF", staff_ids: [1], due_date: "2026-10-30" }], ["GET", "/settings"], ["GET", "/staff"], ["PUT", "/settings", { settings: {} }], ["POST", "/performance/calculate-all", { month: "2026-10" }], ["POST", "/tasks/1/verify", {}]])
+    assert.equal((await call(m, path, { actor: pa, body })).status, 403, m + " " + path);
+  // ordinary staff do not get the extras
+  for (const [m, path] of [["GET", "/directory"], ["GET", "/performance"], ["POST", "/notifications/send"]]) assert.equal((await call(m, path, { actor: other, query: { month: "2026-10" }, body: { title: "x" } })).status, 403, path);
+  assert.equal((await call("GET", "/tasks", { actor: other, query: { staff_id: pa.staffId } })).status, 403);
+});

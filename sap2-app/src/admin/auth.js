@@ -32,7 +32,9 @@ function createAuth({ store, ready = Promise.resolve(), apiKey = () => process.e
       try { await ready; } catch (e) { return { ok: false, status: 503, error: "The staff portal is not ready: " + (e && e.message) }; }
       const staff = personal ? await P.verifyAccessCode(store, sid, personal) : await P.verifyOfficeCode(store, sid, office);
       if (!staff) { fail(k, g); return { ok: false, status: 401, error: "Wrong office code or staff selection" }; }
-      return { ok: true, staffOnly: true, actor: { role: "staff", staffId: staff.id, name: staff.name } };
+      // The Personal Assistant office manages staff day to day: she gets read-only extras (see api.js, guard "pa").
+      let pa = false; try { const o = staff.office_id ? await store.one("administrative_offices", { id: staff.office_id }) : null; pa = !!o && o.code === "PERSONAL_ASSISTANT"; } catch (e) { pa = false; }
+      return { ok: true, staffOnly: true, actor: { role: "staff", staffId: staff.id, name: staff.name, pa } };
     }
     const given = get("x-api-key"), k = "admin|" + ip, g = "all-admin";
     if (!given) return { ok: false, status: 401, error: "Please sign in" };
