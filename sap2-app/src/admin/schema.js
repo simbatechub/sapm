@@ -385,7 +385,7 @@ const EXISTING = {
   payments: { cols: { id: "SERIAL PRIMARY KEY", staff_id: "INTEGER NOT NULL", pay_type: "TEXT NOT NULL", month: "CHAR(7) NOT NULL", amount: "INTEGER NOT NULL", reference: "TEXT NOT NULL", paid_at: TIMESTAMP, base_salary: "INTEGER", performance_score: "NUMERIC", recommended_pay: "INTEGER", approved_pay: "INTEGER" }, unique: [], indexes: [] },
 };
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Idempotent migration SQL. Existing tables/data are never dropped or rewritten.
 function ddlStatements() {
