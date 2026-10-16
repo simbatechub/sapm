@@ -63,6 +63,7 @@ table("meetings", {
   notes: "TEXT",
   action_points: "JSONB NOT NULL DEFAULT '[]'::jsonb",
   created_by: "TEXT",
+  owner_staff_id: "INTEGER", // set when a department head (e.g. the Creative Director) calls a private meeting for their team
   created_at: TIMESTAMP,
 }, { indexes: [["meeting_date"]] });
 table("admin_tasks", {
@@ -385,7 +386,7 @@ const EXISTING = {
   payments: { cols: { id: "SERIAL PRIMARY KEY", staff_id: "INTEGER NOT NULL", pay_type: "TEXT NOT NULL", month: "CHAR(7) NOT NULL", amount: "INTEGER NOT NULL", reference: "TEXT NOT NULL", paid_at: TIMESTAMP, base_salary: "INTEGER", performance_score: "NUMERIC", recommended_pay: "INTEGER", approved_pay: "INTEGER" }, unique: [], indexes: [] },
 };
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // Idempotent migration SQL. Existing tables/data are never dropped or rewritten.
 function ddlStatements() {

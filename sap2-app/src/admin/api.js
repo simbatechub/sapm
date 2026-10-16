@@ -58,7 +58,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       if (r.method !== method) continue;
       const m = r.re.exec(path); if (!m) continue;
       if (r.guard === "mgmt" && (!actor || actor.role !== "management")) return { status: 403, body: { error: "Management access required" } };
-      if (r.guard === "pa" && !(actor && (actor.role === "management" || actor.pa))) return { status: 403, body: { error: "Management or Personal Assistant access required" } };
+      if (r.guard === "team" && !(actor && (actor.role === "management" || (actor.manages && actor.manages.length)))) return { status: 403, body: { error: "Management or department-head access required" } };
+      if (r.guard === "pa" && !(actor && (actor.role === "management" || actor.pa || (actor.manages && actor.manages.length)))) return { status: 403, body: { error: "Management or Personal Assistant access required" } };
       const params = {}; r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
       try { return { status: 200, body: await r.fn({ params, query: query || {}, body: body || {}, actor, store, today: today(), now: now() }) }; }
       catch (e) { return errorResponse(e); }
@@ -177,6 +178,11 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     });
   });
 
+  // Department heads (the Creative Director) act only on staff of the offices they head.
+  const isHead = (c) => c.actor.role === "staff" && !!(c.actor.manages && c.actor.manages.length);
+  const teamIds = async (c) => new Set((await P.adminStaff(c.store)).filter((s) => c.actor.manages.includes(s.office_id)).map((s) => s.id));
+  const needTeam = async (c, ids) => { const t = await teamIds(c); for (const id of ids) if (!t.has(Number(id))) throw forbid("You can only do this for the Content Creator and Social Media offices"); };
+
   // ======================= staff / office mapping / access codes =======================
   get("/staff", "mgmt", async (c) => {
     const offices = await officeMap(c.store); const map = await c.store.find("office_title_map"); const codeToOffice = new Map([...offices.values()].map((o) => [o.code, o]));
@@ -202,15 +208,15 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   post("/admin-code", "mgmt", async (c) => ({ code: await P.createAdminCode(c.store, c.actor), note: "This is the new administrator code. Write it down now; the previous code no longer works." }));
   // Read-only staff directory + schedule for management and the Personal Assistant. Pay, bank and account details are never included.
   get("/directory", "pa", async (c) => {
-    const offices = await officeMap(c.store);
-    return (await c.store.find("staff", {}, { order: [["name", "asc"]] })).map((s) => ({ id: s.id, name: s.name, role: s.role, staff_type: s.staff_type, active: s.active, email: s.email, phone: s.phone,
+    const offices = await officeMap(c.store), mine = isHead(c) ? await teamIds(c) : null;
+    return (await c.store.find("staff", {}, { order: [["name", "asc"]] })).filter((s) => !mine || mine.has(s.id)).map((s) => ({ id: s.id, name: s.name, role: s.role, staff_type: s.staff_type, active: s.active, email: s.email, phone: s.phone,
       office: s.office_id ? (offices.get(s.office_id) || {}).name || null : null, campuses: s.campuses || [], skills: s.skills || [], frequency: s.frequency }));
   });
   get("/me", "any", async (c) => {
     if (c.actor.role !== "staff") return { role: "management", name: c.actor.name };
     const p = await P.staffPerformance(c.store, c.actor.staffId, c.query.month ? monthV(c.query.month) : c.today.slice(0, 7), c.today, { forStaff: true });
     const kpis = p.staff.office_id ? await c.store.find("office_kpis", { office_id: p.staff.office_id, active: true }) : [];
-    return { role: "staff", pa: !!c.actor.pa, ...p, kpis };
+    return { role: "staff", pa: !!c.actor.pa, head: isHead(c), ...p, kpis };
   });
 
   // ======================= notifications =======================
@@ -246,7 +252,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const title = str(c.body.title, "title", { req: true, max: 200 }), body = str(c.body.body, "body", { max: 2000 });
     const audience = oneOf(c.body.audience, ["ADMIN", "INSTRUCTORS", "ALL"], "audience", "ADMIN");
     const active = (await c.store.find("staff", { active: true })), types = { ADMIN: ["admin", "both"], INSTRUCTORS: ["instructor", "both"], ALL: ["admin", "both", "instructor"] }[audience];
-    const ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? c.body.staff_ids.map((x) => idV(x, "staff_ids")) : active.filter((x) => types.includes(x.staff_type)).map((x) => x.id);
+    let ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? c.body.staff_ids.map((x) => idV(x, "staff_ids")) : active.filter((x) => types.includes(x.staff_type)).map((x) => x.id);
+    if (isHead(c)) { const t = await teamIds(c); ids = Array.isArray(c.body.staff_ids) && c.body.staff_ids.length ? ids : [...t]; await needTeam(c, ids); } // department heads reach only their own team
     const rows = await N.notify(ids, { kind: "ANNOUNCEMENT", title, body, link: "notif", created_by: c.actor.name, no_link: audience === "INSTRUCTORS", sms: c.body.sms === true || c.body.sms === "true" });
     await P.audit(c.store, c.actor, { action: "NOTIFICATION_SENT", entity: "notification", entity_id: String(rows.length), reason: title + " (" + audience + ")" }); return { sent: rows.length, audience };
   });
@@ -254,7 +261,9 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
 
   // ======================= tasks =======================
   async function listTasks(c) {
-    const q = c.query; const sid = c.actor.pa ? (q.staff_id ? idV(q.staff_id, "staff_id") : null) : who(c, q.staff_id, { optional: true });
+    const q = c.query; const team = isHead(c) && (q.team === "1" || q.team === 1 || q.team === true) ? await teamIds(c) : null;
+    const sid = team || c.actor.pa ? (q.staff_id ? idV(q.staff_id, "staff_id") : null) : who(c, q.staff_id, { optional: true });
+    if (team && sid && !team.has(sid)) throw forbid("You can only see your own team's tasks");
     const asg = await c.store.find("task_assignments", sid ? { staff_id: sid } : {});
     const tasks = new Map((asg.length ? await c.store.find("admin_tasks", { id: [...new Set(asg.map((a) => a.task_id))] }) : []).map((t) => [t.id, t]));
     const names = await staffNames(c.store), offices = await officeMap(c.store);
@@ -264,6 +273,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       const t = tasks.get(a.task_id);
       return { id: a.id, task_id: t.id, title: t.title, description: t.description, office_id: sOff.get(a.staff_id) || t.office_id || null, office: (offices.get(sOff.get(a.staff_id) || t.office_id) || {}).name || null, staff_id: a.staff_id, staff_name: names.get(a.staff_id), created_by: t.created_by, priority: t.priority, start_date: t.start_date, due_date: t.due_date, expected_output: t.expected_output, kpi_id: t.kpi_id, meeting_id: t.meeting_id, status: effStatus(a, t, c.today), stored_status: a.status, actual_output: a.actual_output, evidence_url: a.evidence_url, evidence: ev.filter((e) => e.assignment_id === a.id), submitted_at: a.submitted_at, completion_date: a.completion_date, verification_status: a.verification_status, verified_by: a.verified_by, management_comment: a.management_comment, performance_score: a.performance_score };
     });
+    if (team) rows = rows.filter((r) => team.has(r.staff_id));
     if (q.month) { const { from, to } = E.monthRange(monthV(q.month)); rows = rows.filter((r) => r.due_date >= from && r.due_date < to); }
     if (q.office_id) rows = rows.filter((r) => r.office_id === Number(q.office_id));
     if (q.status) rows = rows.filter((r) => r.status === String(q.status).toUpperCase());
@@ -281,8 +291,13 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     for (const id of ids) await tx.insert("task_assignments", { task_id: t.id, staff_id: id });
     return { ...t, assignees: members.map((m) => ({ id: m.id, name: m.name })) };
   }
-  post("/tasks", "mgmt", async (c) => {
-    const b = c.body, due = dateV(b.due_date, "due_date"), start = dateV(b.start_date, "start_date", false);
+  post("/tasks", "team", async (c) => {
+    const b = c.body;
+    if (isHead(c)) { // a department head can only give tasks to the offices they head
+      if (b.scope === "OFFICE") { if (!c.actor.manages.includes(Number(b.office_id))) throw forbid("You can only give tasks to the Content Creator and Social Media offices"); }
+      else await needTeam(c, Array.isArray(b.staff_ids) ? b.staff_ids : []);
+    }
+    const due = dateV(b.due_date, "due_date"), start = dateV(b.start_date, "start_date", false);
     if (start && start > due) throw bad("start_date cannot be after due_date");
     const scope = oneOf(b.scope, ["STAFF", "OFFICE"], "scope", "STAFF");
     const made = await c.store.tx((tx) => createTasks(tx, c, { title: str(b.title, "title", { req: true, max: 300 }), description: str(b.description, "description"), office_id: b.office_id ? idV(b.office_id, "office_id") : null, staff_ids: b.staff_ids, scope, priority: oneOf(b.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), start_date: start, due_date: due, expected_output: str(b.expected_output, "expected_output"), kpi_id: b.kpi_id ? idV(b.kpi_id, "kpi_id") : null, meeting_id: b.meeting_id ? idV(b.meeting_id, "meeting_id") : null }));
@@ -338,7 +353,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     return u;
   }));
   const reviewTask = (action) => async (c) => { let note = null; const out = await c.store.tx(async (tx) => {
-    const sid = idV(c.body.staff_id, "staff_id"); const a = await tx.one("task_assignments", { task_id: idV(c.params.id, "id"), staff_id: sid }); if (!a) throw notFound("Assignment not found");
+    const sid = idV(c.body.staff_id, "staff_id"); if (isHead(c)) await needTeam({ ...c, store: tx }, [sid]); const a = await tx.one("task_assignments", { task_id: idV(c.params.id, "id"), staff_id: sid }); if (!a) throw notFound("Assignment not found");
     const t = await tx.one("admin_tasks", { id: a.task_id }); await P.assertEditable(tx, sid, monthOf(t.due_date), "task verification");
     if (a.status !== "SUBMITTED") throw conflict("Only a submitted task can be verified or rejected.");
     const comment = str(c.body.comment, "comment", { req: action === "reject" }), stamp = new Date().toISOString();
@@ -351,8 +366,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     await P.audit(tx, c.actor, { action: action === "verify" ? "TASK_VERIFIED" : "TASK_REJECTED", entity: "task_assignment", entity_id: a.id, staff_id: sid, month: monthOf(t.due_date), old: { status: a.status, performance_score: a.performance_score }, new: { status: p.status, performance_score: p.performance_score }, reason: comment });
     return u;
   }); if (note) await N.notify([note.sid], action === "verify" ? { kind: "TASK_VERIFIED", title: "Task approved: " + note.title, body: note.comment || "Management has verified your submission.", link: "tasks", created_by: c.actor.name } : { kind: "TASK_REJECTED", title: "Task sent back: " + note.title, body: note.comment || "Please redo and resubmit.", link: "tasks", created_by: c.actor.name }); return out; };
-  post("/tasks/:id/verify", "mgmt", reviewTask("verify"));
-  post("/tasks/:id/reject", "mgmt", reviewTask("reject"));
+  post("/tasks/:id/verify", "team", reviewTask("verify"));
+  post("/tasks/:id/reject", "team", reviewTask("reject"));
 
   // ======================= activities =======================
   get("/activities", "any", async (c) => {
@@ -436,12 +451,12 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const ms = await c.store.find("meetings", w, { order: [["meeting_date", "desc"], ["id", "desc"]] });
     const att = ms.length ? await c.store.find("meeting_attendance", { meeting_id: ms.map((m) => m.id) }) : [];
     const sid = c.actor.role === "staff" ? c.actor.staffId : null;
-    return ms.filter((m) => !sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid)).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
+    return ms.filter((m) => !sid || m.owner_staff_id === sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid)).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
   });
   get("/meetings/:id", "any", async (c) => {
     const m = await c.store.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
     const names = await staffNames(c.store); let att = (await c.store.find("meeting_attendance", { meeting_id: m.id })).map((a) => ({ ...a, staff_name: names.get(a.staff_id) }));
-    if (c.actor.role === "staff") { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
+    if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
     return { ...m, attendance: att };
   });
   const syncParticipants = async (tx, meeting, ids) => {
@@ -450,18 +465,22 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     for (const e of existing) if (!ids.includes(e.staff_id) && e.status === "PENDING") await tx.remove("meeting_attendance", { id: e.id });
   };
   const actionPoints = (v) => (Array.isArray(v) ? v : []).map((a) => ({ text: str(a.text, "action point text", { req: true }), assignee_ids: (a.assignee_ids || []).map((x) => idV(x, "assignee")), due_date: dateV(a.due_date, "action point due_date", false), priority: oneOf(a.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), task_id: a.task_id || null }));
-  post("/meetings", "mgmt", async (c) => {
+  // A department head's meetings are private: only the invited team members, the head and management can see them.
+  const ownMeeting = (c, m) => { if (isHead(c) && m.owner_staff_id !== c.actor.staffId) throw forbid("You can only manage meetings you called"); };
+  post("/meetings", "team", async (c) => {
     const b = c.body; let pids = [];
+    if (isHead(c)) { if (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length) throw bad("Choose who must attend"); await needTeam(c, b.required_staff_ids); }
     const mtg = await c.store.tx(async (tx) => {
-      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
+      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), owner_staff_id: isHead(c) ? c.actor.staffId : null, meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
       const ids = Array.isArray(b.required_staff_ids) && b.required_staff_ids.length ? b.required_staff_ids.map((x) => idV(x, "required_staff_ids")) : (await P.adminStaff(tx)).map((s) => s.id);
       await syncParticipants(tx, m, ids); pids = ids; return m;
     });
     await N.notify(pids, { kind: "MEETING", title: "Meeting: " + mtg.title, body: `${String(mtg.meeting_date).slice(0, 10)}${mtg.meeting_time ? " at " + String(mtg.meeting_time).slice(0, 5) : ""}${mtg.location ? " - " + mtg.location : ""}`, link: "me", created_by: c.actor.name });
     return mtg;
   });
-  patch("/meetings/:id", "mgmt", async (c) => c.store.tx(async (tx) => {
-    const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {};
+  patch("/meetings/:id", "team", async (c) => c.store.tx(async (tx) => {
+    const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {}; ownMeeting(c, m);
+    if (isHead(c) && Array.isArray(b.required_staff_ids)) await needTeam({ ...c, store: tx }, b.required_staff_ids);
     if (b.title !== undefined) p.title = str(b.title, "title", { req: true, max: 300 });
     if (b.meeting_date !== undefined) p.meeting_date = dateV(b.meeting_date, "meeting_date");
     if (b.meeting_time !== undefined) p.meeting_time = timeV(b.meeting_time, "meeting_time");
@@ -476,9 +495,10 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (Array.isArray(b.required_staff_ids)) await syncParticipants(tx, u, b.required_staff_ids.map((x) => idV(x, "required_staff_ids")));
     return u;
   }));
-  post("/meetings/:id/attendance", "mgmt", async (c) => c.store.tx(async (tx) => {
-    const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
+  post("/meetings/:id/attendance", "team", async (c) => c.store.tx(async (tx) => {
+    const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); ownMeeting(c, m);
     const list = Array.isArray(c.body.records) ? c.body.records : []; if (!list.length) throw bad("records must be a non-empty list");
+    if (isHead(c)) await needTeam({ ...c, store: tx }, list.map((r) => r.staff_id));
     const grace = (await P.getSettings(tx)).grace_minutes, etype = m.meeting_type === "MANDATORY" ? "MANDATORY_MEETING" : "MEETING", out = [];
     for (const r of list) {
       const s = await adminOf(tx, r.staff_id); await P.assertEditable(tx, s.id, monthOf(m.meeting_date), "meeting attendance");
@@ -585,7 +605,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   get("/performance", "pa", async (c) => {
     const month = monthV(c.query.month), sb = await P.scoreboard(c.store, month, c.today, { office_id: c.query.office_id });
     if (c.actor.role !== "staff") return sb;
-    // Personal Assistant view: scores and bands only. No salary, pay, settings or detailed workings.
+    if (isHead(c)) { const t = await teamIds(c); sb.rows = sb.rows.filter((r) => t.has(r.staff_id)); sb.rows.forEach((r, i) => (r.rank = i + 1)); }
+    // Personal Assistant / department head view: scores and bands only. No salary, pay, settings or detailed workings.
     return { month: sb.month, month_status: sb.month_status, view_only: true, rows: sb.rows.map((r) => ({ rank: r.rank, staff_id: r.staff_id, name: r.name, role: r.role, office: r.office, task: r.task, kpi: r.kpi, attendance: r.attendance, reports: r.reports, productivity: r.productivity, teamwork: r.teamwork,
       final_score: r.final_score, pace_score: r.details && r.details.pace_score, month_progress_pct: r.details && r.details.month_progress_pct, band: r.band, band_label: r.band_label, state: r.state, has_data: r.has_data, exit_review_required: r.exit_review_required })) };
   });

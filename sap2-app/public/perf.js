@@ -540,16 +540,20 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
   const PA_CAMPS = ['Airport Road Campus', 'Ekehuan Campus', 'Ewah Campus', 'Ogida Campus', 'Ugbowo Campus'];
   function renderPortal() {
     const me0 = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (me0 && me0.pa) X.pa = true;
-    const tabs = PT.concat(X.pa ? PA_T : []);
+    if (me0 && me0.head) X.head = true;
+    const tabs = PT.concat(X.pa ? PA_T : X.head ? HEAD_T : []);
     const lab = (k, l) => k === 'notif' && X.unread ? `${l} <span class="b sbC">${X.unread}</span>` : l;
     $('nv').innerHTML = tabs.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l)}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
-    $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['sched', 'atasks'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks'))}</button>`).join('');
+    $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['sched', 'atasks'] : X.head ? ['htasks', 'hmeet'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks').replace('Team tasks', 'Team').replace('Team meetings', 'Meetings'))}</button>`).join('');
     if (!X.poll) { X.poll = setInterval(pollUnread, 60000); pollUnread() }
     let body;
     if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'ann') body = paAnn();
+    else if (X.head && X.pt === 'hperf') body = paPerf(); else if (X.head && X.pt === 'htasks') body = hTasks(); else if (X.head && X.pt === 'hmeet') body = hMeet(); else if (X.head && X.pt === 'ann') body = paAnn();
     else if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
     $('m').innerHTML = mh() + body;
   }
+  // The Creative Director heads the Content Creator and Social Media offices: team performance, tasks, private meetings and announcements for those two only.
+  const HEAD_T = [['hperf', 'Team performance'], ['htasks', 'Team tasks'], ['hmeet', 'Team meetings'], ['ann', 'Send announcement']];
   const paStaff = () => need('pa:dir', () => A('/directory'));
   function paSched() {
     const d = paStaff(); if (!d) return loading(); if (bad(d)) return errBox(d);
@@ -571,8 +575,54 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
     const rows = d.filter(t => !f || t.office === f);
     return `<h1>All tasks</h1><div class="p">Tasks assigned to every office. View only.</div><div class="row pf-noprint"><label class="l">Office</label><select onchange="PF.X.pao=this.value;render()"><option value="">All offices</option>${offs.map(o => `<option ${o === f ? 'selected' : ''}>${e(o)}</option>`).join('')}</select><span class="pf-mu">${rows.length} task(s)</span></div>${tbl(['Office', 'Assigned to', 'Task', 'Due', 'Status', 'Priority'], rows.map(t => `<tr><td class="wrap">${e(t.office || '—')}</td><td>${e(t.staff_name || '')}</td><td class="wrap" style="min-width:220px"><b>${e(t.title)}</b></td><td>${t.due_date}</td><td>${statusBadge(t.status)}</td><td>${e(label(t.priority))}</td></tr>`))}`;
   }
+
+  const hTeam = () => need('h:team', () => A('/directory'));
+  const hRefresh = () => { delete X.c['h:tasks']; delete X.c['h:meet']; render() };
+  function hTasks() {
+    const d = need('h:tasks', () => A('/tasks?team=1')), tm = hTeam(); if (!d || !tm) return loading(); if (bad(d)) return errBox(d);
+    const rows = d.slice().sort((a, b) => (a.status === 'SUBMITTED' ? 0 : 1) - (b.status === 'SUBMITTED' ? 0 : 1) || (a.due_date < b.due_date ? -1 : 1));
+    return `<h1>Team tasks</h1><div class="p">Tasks for the Content Creator and Social Media offices. Give a task, then approve or send back what they submit.</div><div class="row pf-noprint"><button class="btn pr" onclick="PF.hNewTask()">Give a task</button><span class="pf-mu">${rows.filter(t => t.status === 'SUBMITTED').length} waiting for your approval</span></div>${tbl(['Assigned to', 'Task', 'Due', 'Status', 'Submitted work', ''], rows.map(t => `<tr><td>${e(t.staff_name)}<div class="pf-note">${e(t.office || '')}</div></td><td class="wrap" style="min-width:200px"><b>${e(t.title)}</b><div class="pf-note">${e(t.description || '')}</div></td><td>${String(t.due_date).slice(0, 10)}</td><td>${statusBadge(t.status)}</td><td class="wrap pf-det">${e(t.actual_output || '')}${t.evidence_url ? `<div><a href="${e(t.evidence_url)}" target="_blank" rel="noopener">Evidence</a></div>` : ''}${t.management_comment ? `<div class="pf-note">Feedback: ${e(t.management_comment)}</div>` : ''}</td><td>${t.status === 'SUBMITTED' ? `<button class="btn pr" onclick="PF.hReview(${t.task_id},${t.staff_id},'verify')">Approve</button> <button class="btn" onclick="PF.hReview(${t.task_id},${t.staff_id},'reject')">Send back</button>` : ''}</td></tr>`), 'No tasks for your team yet.')}`;
+  }
+  function hNewTask() {
+    const tm = hTeam(); if (!tm || bad(tm)) return toast('Still loading, try again', 1);
+    M(`<h2 style="font-size:24px">Give a task</h2><div class="pf-fg">${fg('ht_s', 'Give to', selx('ht_s', [['all', 'Everyone in my team']].concat(tm.filter(x => x.active).map(x => [x.id, x.name + ' (' + (x.office || '') + ')'])), 'all'))}${fg('ht_t', 'Task *', inp('ht_t', ''))}${fg('ht_d', 'Details', '<textarea id="ht_d"></textarea>')}${fg('ht_p', 'Priority', selx('ht_p', [['MEDIUM', 'Medium'], ['HIGH', 'High'], ['LOW', 'Low']], 'MEDIUM'))}${fg('ht_u', 'Due date *', inp('ht_u', '', 'type="date"'))}${fg('ht_e', 'Expected output', inp('ht_e', ''))}</div>${mfoot('Give task', 'PF.hDoTask()')}`);
+  }
+  async function hDoTask() {
+    const tm = hTeam(), who = V('ht_s'); try {
+      const ids = who === 'all' ? tm.filter(x => x.active).map(x => x.id) : [Number(who)];
+      await A('/tasks', { method: 'POST', body: { title: V('ht_t'), description: V('ht_d'), scope: 'STAFF', staff_ids: ids, priority: V('ht_p'), due_date: V('ht_u'), expected_output: V('ht_e') } });
+      mcl(); toast('Task given'); hRefresh()
+    } catch (err) { toast(err.message, 1) }
+  }
+  function hReview(taskId, staffId, mode) {
+    M(`<h2 style="font-size:24px">${mode === 'verify' ? 'Approve task' : 'Send back for correction'}</h2><div class="pf-fg">${mode === 'verify' ? fg('hr_s', 'Quality score (0-100)', inp('hr_s', '100', 'type="number" min="0" max="100"')) : ''}${fg('hr_c', mode === 'verify' ? 'Comment' : 'What must be fixed? *', '<textarea id="hr_c"></textarea>')}</div>${mfoot(mode === 'verify' ? 'Approve' : 'Send back', `PF.hDoReview(${taskId},${staffId},'${mode}')`)}`);
+  }
+  async function hDoReview(taskId, staffId, mode) {
+    try { await A(`/tasks/${taskId}/${mode}`, { method: 'POST', body: { staff_id: staffId, comment: V('hr_c'), performance_score: mode === 'verify' ? V('hr_s') : undefined, final: true } }); mcl(); toast(mode === 'verify' ? 'Task approved' : 'Sent back'); hRefresh() } catch (err) { toast(err.message, 1) }
+  }
+  function hMeet() {
+    const d = need('h:meet', () => A('/meetings')), tm = hTeam(); if (!d || !tm) return loading(); if (bad(d)) return errBox(d);
+    const mine = d.filter(m => m.owner_staff_id != null);
+    return `<h1>Team meetings</h1><div class="p">Private meetings with your team. Only the people you invite, you and management can see them. Missed meetings are recorded and lower the person's score.</div><div class="row pf-noprint"><button class="btn pr" onclick="PF.hNewMeet()">Call a meeting</button></div>${tbl(['Date', 'Meeting', 'Invited', 'Present', 'Absent', ''], mine.map(m => `<tr><td>${String(m.meeting_date).slice(0, 10)}${m.meeting_time ? '<div class="pf-note">' + String(m.meeting_time).slice(0, 5) + '</div>' : ''}</td><td class="wrap"><b>${e(m.title)}</b><div class="pf-note">${e(m.location || '')}</div></td><td>${m.participants}</td><td>${m.present + m.late}</td><td>${m.absent ? `<span class="pf-warn">${m.absent}</span>` : 0}</td><td><button class="btn" onclick="PF.hAtt(${m.id})">Record attendance</button></td></tr>`), 'You have not called any meeting yet.')}`;
+  }
+  function hNewMeet() {
+    const tm = hTeam(); if (!tm || bad(tm)) return toast('Still loading, try again', 1);
+    M(`<h2 style="font-size:24px">Call a private meeting</h2><div class="pf-fg">${fg('hm_t', 'Title *', inp('hm_t', ''))}${fg('hm_d', 'Date *', inp('hm_d', nowYmd(), 'type="date"'))}${fg('hm_h', 'Time', inp('hm_h', '', 'type="time"'))}${fg('hm_l', 'Where', inp('hm_l', ''))}${fg('hm_a', 'Agenda', '<textarea id="hm_a"></textarea>')}<label>Invite</label><div>${tm.filter(x => x.active).map(x => `<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" class="hm_p" value="${x.id}" checked style="width:auto"> ${e(x.name)} <span class="pf-note">${e(x.office || '')}</span></label>`).join('')}</div></div>${mfoot('Call meeting', 'PF.hDoMeet()')}`);
+  }
+  async function hDoMeet() {
+    const ids = [...document.querySelectorAll('.hm_p:checked')].map(x => Number(x.value));
+    try { await A('/meetings', { method: 'POST', body: { title: V('hm_t'), meeting_date: V('hm_d'), meeting_time: V('hm_h') || null, location: V('hm_l'), agenda: V('hm_a'), required_staff_ids: ids } }); mcl(); toast('Meeting called. They have been notified.'); hRefresh() } catch (err) { toast(err.message, 1) }
+  }
+  async function hAtt(id) {
+    let m; try { m = await A('/meetings/' + id) } catch (err) { return toast(err.message, 1) }
+    const st = [['PRESENT', 'Present'], ['LATE', 'Late'], ['ABSENT', 'Absent (missed)'], ['EXCUSED', 'Excused']];
+    M(`<h2 style="font-size:24px">${e(m.title)}</h2><div class="pf-note">${String(m.meeting_date).slice(0, 10)}. Absent and late are recorded and count toward the score.</div>${m.attendance.map(a => `<div class="row" style="margin:10px 0;align-items:flex-start"><div style="min-width:170px"><b>${e(a.staff_name)}</b></div>${selx('ha_s' + a.staff_id, st, a.status === 'PENDING' ? 'PRESENT' : a.status)}<input id="ha_r${a.staff_id}" placeholder="Remark (optional)" value="${e(a.remark || '')}" style="flex:1;min-width:140px"></div>`).join('')}${mfoot('Save attendance', `PF.hDoAtt(${id},[${m.attendance.map(a => a.staff_id)}])`)}`);
+  }
+  async function hDoAtt(id, ids) {
+    try { await A(`/meetings/${id}/attendance`, { method: 'POST', body: { records: ids.map(i => ({ staff_id: i, status: V('ha_s' + i), remark: V('ha_r' + i) })) } }); mcl(); toast('Attendance saved'); hRefresh() } catch (err) { toast(err.message, 1) }
+  }
   function paAnn() {
-    return `<h1>Send announcement</h1><div class="p">Send an email (and an in-app / phone notification) to administrative staff, all instructors, everyone, or one person.</div><button class="btn pr" onclick="PF.announce()">Write an announcement</button>`;
+    return X.head ? `<h1>Send announcement</h1><div class="p">Send an email and an in-app / phone notification to your team: the Content Creator and the Social Media & Community Manager, or one of them.</div><button class="btn pr" onclick="PF.announce()">Write an announcement</button>` : `<h1>Send announcement</h1><div class="p">Send an email (and an in-app / phone notification) to administrative staff, all instructors, everyone, or one person.</div><button class="btn pr" onclick="PF.announce()">Write an announcement</button>`;
   }
   function pme() {
     const d = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
@@ -662,7 +712,7 @@ ${d.items.length ? d.items.map(n => `<div class="c" style="margin:8px 0;cursor:p
 <div class="pf-note" style="margin-top:8px">Staff are notified automatically about new tasks, approvals/rejections, report reviews, meetings, deliverables, and report/task reminders.</div>
 ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.slice(0, 15).map(n => `<tr><td>${ago(n.created_at)}</td><td>${e(n.staff_name || '')}</td><td class="wrap"><b>${e(n.title)}</b></td><td>${n.read_at ? 'Read' : 'Unread'}</td><td>${e(n.email_status || '-')}</td><td>${e(n.push_status || '-')}</td><td>${e(n.sms_status || '-')}</td></tr>`), 'No notifications sent yet.', 'pf-tbl-small')}</div>`;
   }
-  async function announce() { try { if (!staffList() || bad(staffList())) { const d = await A(portalOn() ? '/directory' : '/staff'); X.c.staff = d } } catch (err) { toast(err.message, 1) } M(`<h2 style="font-size:24px">Send announcement</h2><div class="pf-note">Sent by email (and in the app / to phones for staff who use them).</div><div class="pf-fg">${fg('an_a', 'Send to', selx('an_a', [['ADMIN', 'Administrative staff'], ['INSTRUCTORS', 'All instructors'], ['ALL', 'Everyone (staff and instructors)']], 'ADMIN'))}${fg('an_p', 'Or send to one person only', selx('an_p', [['', '- Use the group above -']].concat(actives().map(x => [x.id, x.name])), ''))}${fg('an_t', 'Title *', inp('an_t', ''))}<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input id="an_s" type="checkbox" style="width:auto"> Also send as SMS (uses SMS credit)</label>${fg('an_b', 'Message', '<textarea id="an_b"></textarea>')}</div>${mfoot('Send', 'PF.doAnnounce()')}`) }
+  async function announce() { try { if (!staffList() || bad(staffList())) { const d = await A(portalOn() ? '/directory' : '/staff'); X.c.staff = d } } catch (err) { toast(err.message, 1) } M(`<h2 style="font-size:24px">Send announcement</h2><div class="pf-note">Sent by email (and in the app / to phones for staff who use them).</div><div class="pf-fg">${X.head ? `<input type="hidden" id="an_a" value="ADMIN"><div class="pf-note" style="grid-column:1/-1">Goes to your team (Content Creator and Social Media) unless you pick one person below.</div>` : fg('an_a', 'Send to', selx('an_a', [['ADMIN', 'Administrative staff'], ['INSTRUCTORS', 'All instructors'], ['ALL', 'Everyone (staff and instructors)']], 'ADMIN'))}${fg('an_p', 'Or send to one person only', selx('an_p', [['', '- Use the group above -']].concat(actives().map(x => [x.id, x.name])), ''))}${fg('an_t', 'Title *', inp('an_t', ''))}<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input id="an_s" type="checkbox" style="width:auto"> Also send as SMS (uses SMS credit)</label>${fg('an_b', 'Message', '<textarea id="an_b"></textarea>')}</div>${mfoot('Send', 'PF.doAnnounce()')}`) }
   async function doAnnounce() { try { const r = await A('/notifications/send', { method: 'POST', body: { title: V('an_t'), body: V('an_b'), audience: V('an_a'), staff_ids: V('an_p') ? [Number(V('an_p'))] : undefined, sms: VC('an_s') } }); mcl(); toast('Sent to ' + r.sent + ' staff'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
   function pdeliv() {
     const d = need('md:' + X.pm, () => A('/deliverables?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
@@ -685,7 +735,7 @@ ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.s
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,
     recordAtt, saveAtt, newMeeting, saveMeeting, openMeeting, saveMeetAtt, saveMinutes, newReport, saveReport, openReport, doReport, newAct, saveAct, reviewAct, saveKpiResult, csv, approvePay,
-    portalOn, portalExit, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
+    portalOn, portalExit, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
     pm: () => X.pm, setMonthFromPayroll: m => { X.pm = m }
   };
 })();

@@ -33,8 +33,12 @@ function createAuth({ store, ready = Promise.resolve(), apiKey = () => process.e
       const staff = personal ? await P.verifyAccessCode(store, sid, personal) : await P.verifyOfficeCode(store, sid, office);
       if (!staff) { fail(k, g); return { ok: false, status: 401, error: "Wrong office code or staff selection" }; }
       // The Personal Assistant office manages staff day to day: she gets read-only extras (see api.js, guard "pa").
-      let pa = false; try { const o = staff.office_id ? await store.one("administrative_offices", { id: staff.office_id }) : null; pa = !!o && o.code === "PERSONAL_ASSISTANT"; } catch (e) { pa = false; }
-      return { ok: true, staffOnly: true, actor: { role: "staff", staffId: staff.id, name: staff.name, pa } };
+      // The Creative Director heads the Content Creator and Social Media offices: she/he can manage only those two teams.
+      let pa = false, manages = []; try {
+        const o = staff.office_id ? await store.one("administrative_offices", { id: staff.office_id }) : null; pa = !!o && o.code === "PERSONAL_ASSISTANT";
+        if (o && o.code === "CREATIVE_DIRECTOR") manages = (await store.find("administrative_offices")).filter((x) => ["CONTENT_CREATOR", "SOCIAL_MEDIA"].includes(x.code)).map((x) => x.id);
+      } catch (e) { pa = false; manages = []; }
+      return { ok: true, staffOnly: true, actor: { role: "staff", staffId: staff.id, name: staff.name, pa, manages } };
     }
     const given = get("x-api-key"), k = "admin|" + ip, g = "all-admin";
     if (!given) return { ok: false, status: 401, error: "Please sign in" };

@@ -190,7 +190,9 @@ function calculate(data, settingsIn, today) {
   const { staff, month } = data;
   const t = scoreTasks(data.tasks || [], month, settings, today);
   const attOn = settings.attendance_enabled !== false; // off = staff work remotely: no attendance score, its weight is shared by the other components
-  const a = scoreAttendance(attOn ? data.attendance || [] : [], month, settings);
+  // When daily attendance tracking is off (remote work) meetings still count: a missed meeting lowers the score. Without any meeting records the component stays hidden.
+  const a = scoreAttendance(attOn ? data.attendance || [] : (data.attendance || []).filter((x) => MEETING_TYPES.includes(x.event_type)), month, settings);
+  const attHidden = !attOn && a.details.records === 0;
   const rp = scoreReports(data.reports || [], month, settings, today);
   const dv = scoreDeliverables(data.deliverables || [], month, settings, today);
   const auto = {
@@ -205,7 +207,7 @@ function calculate(data, settingsIn, today) {
   const comps = COMPONENTS.map((c) => {
     const overridden = overrides[c] !== undefined && overrides[c] !== null;
     const value = overridden ? clamp01(num(overrides[c]) / 100) : raw[c];
-    return { component: c, label: COMPONENT_LABELS[c], weight: c === "attendance" && !attOn ? 0 : num(settings.weights[c]), hidden: c === "attendance" && !attOn, raw_score: value === null ? null : value, system_score: raw[c], overridden, override: overridden ? { value: num(overrides[c]) } : null, details: details[c] };
+    return { component: c, label: c === "attendance" && !attOn ? "Meeting attendance" : COMPONENT_LABELS[c], weight: c === "attendance" && attHidden ? 0 : num(settings.weights[c]), hidden: c === "attendance" && attHidden, raw_score: value === null ? null : value, system_score: raw[c], overridden, override: overridden ? { value: num(overrides[c]) } : null, details: details[c] };
   });
   const zero = settings.missing_component_policy === "ZERO";
   const live = comps.filter((c) => c.raw_score !== null);

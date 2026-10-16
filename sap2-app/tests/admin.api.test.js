@@ -372,3 +372,48 @@ test("Personal Assistant: read-only directory, scoreboard (no pay), all tasks, c
   for (const [m, path] of [["GET", "/directory"], ["GET", "/performance"], ["POST", "/notifications/send"]]) assert.equal((await call(m, path, { actor: other, query: { month: "2026-10" }, body: { title: "x" } })).status, 403, path);
   assert.equal((await call("GET", "/tasks", { actor: other, query: { staff_id: pa.staffId } })).status, 403);
 });
+
+test("Creative Director (department head): sees and manages only Content Creator + Social Media; private meetings count toward scores", async () => {
+  const { ok, call, staff, store } = await setup();
+  const by = (n) => staff[Object.keys(staff).find((x) => x.includes(n))], offs = await ok("GET", "/offices"), oid = (code) => offs.find((o) => o.code === code).id;
+  const cd = by("Harrison"), cc = by("Adelana"), sm = by("Omotuemen"), tech = by("Chidozie");
+  for (const [s, code] of [[cd, "CREATIVE_DIRECTOR"], [cc, "CONTENT_CREATOR"], [sm, "SOCIAL_MEDIA"], [tech, "TECH_OPS"]]) await ok("POST", `/staff/${s.id}/office`, { body: { office_id: oid(code) } });
+  const H = { ...staffActor(cd), manages: [oid("CONTENT_CREATOR"), oid("SOCIAL_MEDIA")] }, CC = staffActor(cc), SM = staffActor(sm), TECH = staffActor(tech);
+  await ok("PUT", "/settings", { body: { settings: { attendance_enabled: false } } }); // remote work: daily attendance off
+  // performance: only the two teams, no pay data
+  const sb = await ok("GET", "/performance", { actor: H, query: { month: "2026-10" } });
+  assert.deepEqual(sb.rows.map((r) => r.staff_id).sort(), [cc.id, sm.id].sort()); assert.ok(sb.rows.every((r) => !("salary" in r) && !("payroll" in r)));
+  assert.equal((await call("GET", "/directory", { actor: H })).body.length, 2);
+  // tasks: give, only to the two teams
+  const t = await ok("POST", "/tasks", { actor: H, body: { title: "Design the flyer", scope: "STAFF", staff_ids: [cc.id], due_date: "2026-10-30" } }); assert.equal(t.assignees[0].id, cc.id);
+  assert.equal((await call("POST", "/tasks", { actor: H, body: { title: "x", scope: "STAFF", staff_ids: [tech.id], due_date: "2026-10-30" } })).status, 403);
+  assert.equal((await call("POST", "/tasks", { actor: H, body: { title: "x", scope: "OFFICE", office_id: oid("TECH_OPS"), due_date: "2026-10-30" } })).status, 403);
+  assert.equal((await ok("POST", "/tasks", { actor: H, body: { title: "Post it", scope: "OFFICE", office_id: oid("SOCIAL_MEDIA"), due_date: "2026-10-30" } })).assignees.length, 1);
+  const team = await ok("GET", "/tasks", { actor: H, query: { team: "1" } }); assert.ok(team.length >= 2 && team.every((r) => [cc.id, sm.id].includes(r.staff_id)));
+  // approve only their team's submissions
+  await ok("POST", `/tasks/${t.id}/start`, { actor: CC, body: {} }); await ok("POST", `/tasks/${t.id}/submit`, { actor: CC, body: { actual_output: "done", evidence_url: "https://example.com/x", evidence: [{ kind: "URL", reference: "https://example.com/x" }] } });
+  const v = await ok("POST", `/tasks/${t.id}/verify`, { actor: H, body: { staff_id: cc.id, comment: "Good", performance_score: 90 } }); assert.equal(v.verification_status, "VERIFIED");
+  const tt = await ok("POST", "/tasks", { body: { title: "Tech job", scope: "STAFF", staff_ids: [tech.id], due_date: "2026-10-30" } });
+  await ok("POST", `/tasks/${tt.id}/start`, { actor: TECH, body: {} }); await ok("POST", `/tasks/${tt.id}/submit`, { actor: TECH, body: { actual_output: "done", evidence_url: "https://example.com/y", evidence: [{ kind: "URL", reference: "https://example.com/y" }] } });
+  assert.equal((await call("POST", `/tasks/${tt.id}/verify`, { actor: H, body: { staff_id: tech.id } })).status, 403);
+  // announcements reach only the team
+  assert.equal((await ok("POST", "/notifications/send", { actor: H, body: { title: "Team update", body: "x", audience: "ALL" } })).sent, 2);
+  assert.equal((await call("POST", "/notifications/send", { actor: H, body: { title: "x", staff_ids: [tech.id] } })).status, 403);
+  // private meeting: only invited team members + the director + management can see it
+  assert.equal((await call("POST", "/meetings", { actor: H, body: { title: "Bad", meeting_date: "2026-10-15", required_staff_ids: [tech.id] } })).status, 403);
+  assert.equal((await call("POST", "/meetings", { actor: H, body: { title: "Bad", meeting_date: "2026-10-15" } })).status, 400);
+  const m = await ok("POST", "/meetings", { actor: H, body: { title: "Creative sync", meeting_date: "2026-10-15", meeting_time: "10:00", required_staff_ids: [cc.id, sm.id] } });
+  assert.ok((await ok("GET", "/meetings", { actor: CC })).some((x) => x.id === m.id)); assert.ok((await ok("GET", "/meetings", { actor: H })).some((x) => x.id === m.id)); assert.ok((await ok("GET", "/meetings")).some((x) => x.id === m.id));
+  assert.ok(!(await ok("GET", "/meetings", { actor: TECH })).some((x) => x.id === m.id), "private to the invited team"); assert.equal((await call("GET", `/meetings/${m.id}`, { actor: TECH })).status, 403);
+  assert.equal((await ok("GET", `/meetings/${m.id}`, { actor: H })).attendance.length, 2);
+  // missed meeting is recorded and lowers the score even though daily attendance is off
+  await ok("POST", `/meetings/${m.id}/attendance`, { actor: H, body: { records: [{ staff_id: cc.id, status: "ABSENT", remark: "No show" }, { staff_id: sm.id, status: "PRESENT", arrival_time: "09:55" }] } });
+  const ccCalc = (await ok("POST", `/performance/${cc.id}/calculate`, { body: { month: "2026-10" } })).calc, smCalc = (await ok("POST", `/performance/${sm.id}/calculate`, { body: { month: "2026-10" } })).calc;
+  const att = (cl) => cl.components.find((x) => x.component === "attendance");
+  assert.equal(att(ccCalc).hidden, false); assert.equal(att(ccCalc).score_pct, 0); assert.ok(att(smCalc).score_pct > 0);
+  assert.equal((await call("POST", `/meetings/${m.id}/attendance`, { actor: { ...H, staffId: 9999 }, body: { records: [{ staff_id: cc.id, status: "PRESENT" }] } })).status, 403, "only the director who called it");
+  // a department head cannot do management things
+  for (const [mm, path, body] of [["GET", "/settings"], ["GET", "/staff"], ["POST", "/performance/calculate-all", { month: "2026-10" }], ["POST", "/staff/1/office", { office_id: 1 }]]) assert.equal((await call(mm, path, { actor: H, body })).status, 403, path);
+  // other staff get none of this
+  assert.equal((await call("POST", "/meetings", { actor: CC, body: { title: "x", meeting_date: "2026-10-15", required_staff_ids: [sm.id] } })).status, 403);
+});
