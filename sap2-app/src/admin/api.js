@@ -277,7 +277,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (q.month) { const { from, to } = E.monthRange(monthV(q.month)); rows = rows.filter((r) => r.due_date >= from && r.due_date < to); }
     if (q.office_id) rows = rows.filter((r) => r.office_id === Number(q.office_id));
     if (q.status) rows = rows.filter((r) => r.status === String(q.status).toUpperCase());
-    return rows.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : a.id - b.id));
+    return rows.sort((a, b) => b.task_id - a.task_id || a.id - b.id); // newest task first, older ones go down; people on the same task stay together
   }
   get("/tasks", "any", listTasks);
   async function createTasks(tx, c, { title, description, office_id, staff_ids, scope, priority, start_date, due_date, expected_output, kpi_id, meeting_id }) {
