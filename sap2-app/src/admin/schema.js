@@ -108,6 +108,24 @@ table("task_evidence", {
   added_by: "TEXT",
   created_at: TIMESTAMP,
 }, { indexes: [["assignment_id"]] });
+table("files", {
+  id: "SERIAL PRIMARY KEY",
+  name: "TEXT NOT NULL",
+  mime: "TEXT",
+  size_bytes: "INTEGER NOT NULL DEFAULT 0",
+  kind: "TEXT NOT NULL DEFAULT 'OTHER'", // TASK | REPORT | MEETING | OTHER
+  task_id: "INTEGER REFERENCES admin_tasks(id) ON DELETE SET NULL",
+  report_week: "DATE",
+  meeting_id: "INTEGER REFERENCES meetings(id) ON DELETE SET NULL",
+  staff_id: "INTEGER REFERENCES staff(id) ON DELETE SET NULL", // who sent it
+  uploaded_by: "TEXT",
+  note: "TEXT",
+  created_at: TIMESTAMP,
+}, { indexes: [["task_id"], ["staff_id"], ["meeting_id"], ["created_at"]] });
+table("file_blobs", {
+  file_id: "INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE",
+  data: "BYTEA NOT NULL",
+}, { pk: ["file_id"] });
 table("admin_activities", {
   id: "SERIAL PRIMARY KEY",
   staff_id: FK("staff"),
@@ -386,7 +404,7 @@ const EXISTING = {
   payments: { cols: { id: "SERIAL PRIMARY KEY", staff_id: "INTEGER NOT NULL", pay_type: "TEXT NOT NULL", month: "CHAR(7) NOT NULL", amount: "INTEGER NOT NULL", reference: "TEXT NOT NULL", paid_at: TIMESTAMP, base_salary: "INTEGER", performance_score: "NUMERIC", recommended_pay: "INTEGER", approved_pay: "INTEGER" }, unique: [], indexes: [] },
 };
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 // Idempotent migration SQL. Existing tables/data are never dropped or rewritten.
 function ddlStatements() {

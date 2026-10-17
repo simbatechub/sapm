@@ -430,3 +430,48 @@ test("meetings: invitees are notified on creation; changing time/place notifies 
   const before = (await inbox(a)).length; await ok("PATCH", `/meetings/${m.id}`, { body: { agenda: "Only the agenda changed" } });
   assert.equal((await inbox(a)).length, before, "agenda-only edits do not spam");
 });
+
+test("files: staff attach files to tasks and weekly reports; management lists/downloads them; PA runs meetings and minutes", async () => {
+  const { ok, call, staff } = await setup();
+  const by = (n) => staff[Object.keys(staff).find((x) => x.includes(n))], ada = by("Adelana"), isi = by("Isibor"), chi = by("Chidozie"), cd = by("Harrison");
+  const A = staffActor(ada), I = { ...staffActor(isi), pa: true }, C = staffActor(chi);
+  const t = await ok("POST", "/tasks", { body: { title: "Shoot the video", scope: "STAFF", staff_ids: [ada.id], due_date: "2026-10-30" } });
+  const csv = Buffer.from("a,b\n1,2\n");
+  const up = await ok("POST", "/files", { actor: A, query: { task_id: t.id, name: "data.csv", mime: "text/csv" }, body: { data: csv } }); assert.equal(up.size_bytes, 8);
+  await ok("POST", "/files", { actor: A, query: { task_id: t.id, name: "clip.mp4", mime: "video/mp4" }, body: { data: Buffer.alloc(2048, 1) } });
+  await ok("POST", "/files", { actor: A, query: { report_week: "2026-10-14", name: "week.zip", mime: "application/zip" }, body: { data: Buffer.from("PK") } });
+  // rules: only your own task, allowed types, size, no future weeks, must say what it is for
+  assert.equal((await call("POST", "/files", { actor: C, query: { task_id: t.id, name: "x.txt" }, body: { data: csv } })).status, 404);
+  assert.equal((await call("POST", "/files", { actor: A, query: { task_id: t.id, name: "virus.exe" }, body: { data: csv } })).status, 400);
+  assert.equal((await call("POST", "/files", { actor: A, query: { task_id: t.id, name: "page.html" }, body: { data: csv } })).status, 400);
+  assert.equal((await call("POST", "/files", { actor: A, query: { task_id: t.id, name: "big.zip" }, body: { data: Buffer.alloc(25 * 1048576 + 1) } })).status, 400);
+  assert.equal((await call("POST", "/files", { actor: A, query: { report_week: "2026-12-07", name: "x.txt" }, body: { data: csv } })).status, 400);
+  assert.equal((await call("POST", "/files", { actor: A, query: { name: "x.txt" }, body: { data: csv } })).status, 400);
+  // management file manager: dates, sender, task
+  const all = await ok("GET", "/files"); assert.equal(all.length, 3);
+  const f = all.find((x) => x.name === "data.csv"); assert.equal(f.staff_name, ada.name); assert.equal(f.task_title, "Shoot the video"); assert.equal(f.kind, "TASK"); assert.ok(f.created_at);
+  assert.equal((await ok("GET", "/files", { query: { kind: "REPORT" } })).length, 1);
+  const dl = await ok("GET", `/files/${f.id}/download`); assert.equal(dl.__file.name, "data.csv"); assert.deepEqual(Buffer.from(dl.__file.data), csv); assert.equal(dl.__file.mime, "text/csv");
+  assert.equal((await ok("GET", "/tasks", { query: { month: "2026-10" } })).find((r) => r.task_id === t.id).files.length, 2, "task rows list their files");
+  // privacy: others cannot list or download
+  assert.equal((await ok("GET", "/files", { actor: C })).length, 0); assert.equal((await call("GET", `/files/${f.id}/download`, { actor: C })).status, 404);
+  assert.equal((await ok("GET", "/files", { actor: A })).length, 3); assert.equal((await call("DELETE", `/files/${f.id}`, { actor: C })).status, 403);
+  // Personal Assistant: set, edit and add minutes to non-private meetings
+  const m = await ok("POST", "/meetings", { actor: I, body: { title: "Board meeting", meeting_date: "2026-11-09", meeting_time: "11:00", required_staff_ids: [ada.id, chi.id] } });
+  assert.ok((await ok("GET", "/notifications", { actor: A })).items.some((n) => /Meeting: Board meeting/.test(n.title)), "invitees notified");
+  await ok("PATCH", `/meetings/${m.id}`, { actor: I, body: { meeting_time: "13:00", notes: "Minutes: agreed budget", action_points: [{ text: "Send budget", assignee_ids: [], due_date: "2026-11-12" }] } });
+  assert.equal((await ok("GET", `/meetings/${m.id}`, { actor: I })).notes, "Minutes: agreed budget");
+  const mf = await ok("POST", "/files", { actor: I, query: { meeting_id: m.id, name: "minutes.docx" }, body: { data: Buffer.from("docx") } });
+  assert.ok((await ok("GET", "/files", { actor: I })).some((x) => x.id === mf.id && x.meeting_title === "Board meeting")); assert.ok((await ok("GET", "/files")).some((x) => x.id === mf.id));
+  assert.equal((await call("POST", "/files", { actor: A, query: { meeting_id: m.id, name: "x.txt" }, body: { data: csv } })).status, 403);
+  assert.equal((await call("POST", `/meetings/${m.id}/attendance`, { actor: I, body: { records: [{ staff_id: ada.id, status: "PRESENT" }] } })).status, 403, "attendance stays with management");
+  assert.equal((await call("POST", `/meetings/${m.id}/convert-actions`, { actor: I, body: {} })).status, 403);
+  // a department head's private meeting is not the PA's to edit
+  const off = await ok("GET", "/offices"); await ok("POST", `/staff/${cd.id}/office`, { body: { office_id: off.find((o) => o.code === "CREATIVE_DIRECTOR").id } });
+  const H = { ...staffActor(cd), manages: [off.find((o) => o.code === "CONTENT_CREATOR").id] }; await ok("POST", `/staff/${ada.id}/office`, { body: { office_id: off.find((o) => o.code === "CONTENT_CREATOR").id } });
+  const pm = await ok("POST", "/meetings", { actor: H, body: { title: "Private chat", meeting_date: "2026-11-10", required_staff_ids: [ada.id] } });
+  assert.equal((await call("PATCH", `/meetings/${pm.id}`, { actor: I, body: { notes: "x" } })).status, 403); assert.ok(!(await ok("GET", "/meetings", { actor: I })).some((x) => x.id === pm.id));
+  // deleting: uploader or management
+  assert.equal((await ok("DELETE", `/files/${up.id}`, { actor: A })).deleted, 1); assert.equal((await ok("GET", "/files")).length, 3);
+  assert.equal((await ok("DELETE", `/files/${mf.id}`)).deleted, 1);
+});

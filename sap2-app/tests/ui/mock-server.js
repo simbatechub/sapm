@@ -39,7 +39,7 @@ const MGT = { role: "management", name: "Mr Billy" };
   }
   http.createServer(async (req, res) => {
     securityHeaders(req, res, () => { });
-    const u = new URL(req.url, "http://x"); let raw = ""; for await (const c of req) raw += c; let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch (e) { }
+    const u = new URL(req.url, "http://x"); const chunks = []; for await (const c of req) chunks.push(c); const buf = Buffer.concat(chunks), raw = buf.toString("utf8"); let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch (e) { }
     if (u.pathname === "/__test/codes") return send(res, 200, codes);
     if (u.pathname.startsWith("/api/")) {
       const p = u.pathname.slice(4); const q = Object.fromEntries(u.searchParams);
@@ -48,7 +48,9 @@ const MGT = { role: "management", name: "Mr Billy" };
       if (p === "/auth/office" && req.method === "POST") { const r = await auth.officeLogin(body, "ip"); return send(res, r.status, r.body); }
       const au = await auth.authenticate((h) => req.headers[h], "ip"); if (!au.ok) return send(res, au.status, { error: au.error });
       if (au.staffOnly && !p.startsWith("/admin/")) return send(res, 403, { error: "Staff accounts can only use the staff portal" });
-      if (p.startsWith("/admin/")) { const r = await api.handle(req.method, p.slice(6), { query: q, body, actor: au.actor }); return r ? send(res, r.status, r.body) : send(res, 404, { error: "no route" }); }
+      if (p.startsWith("/admin/")) { const r = await api.handle(req.method, p.slice(6), { query: q, body: p === "/admin/files" && req.method === "POST" ? { data: buf } : body, actor: au.actor });
+        if (r && r.body && r.body.__file) { const f = r.body.__file; res.writeHead(200, { "content-type": f.mime, "content-disposition": `attachment; filename="${f.name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(f.name)}` }); return res.end(Buffer.from(f.data.data || f.data)); }
+        return r ? send(res, r.status, r.body) : send(res, 404, { error: "no route" }); }
       if (p === "/staff") return send(res, 200, (await store.find("staff")).map((s) => ({ ...s, account_len: String(s.account_number).length, phone_len: String(s.phone).length, staff_type: s.staff_type })));
       if (p === "/appearances") return send(res, 200, appearances);
       if (p === "/payments") return send(res, 200, payments);

@@ -58,6 +58,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       if (r.method !== method) continue;
       const m = r.re.exec(path); if (!m) continue;
       if (r.guard === "mgmt" && (!actor || actor.role !== "management")) return { status: 403, body: { error: "Management access required" } };
+      if (r.guard === "meet" && !(actor && (actor.role === "management" || actor.pa || (actor.manages && actor.manages.length)))) return { status: 403, body: { error: "Management, Personal Assistant or department-head access required" } };
       if (r.guard === "team" && !(actor && (actor.role === "management" || (actor.manages && actor.manages.length)))) return { status: 403, body: { error: "Management or department-head access required" } };
       if (r.guard === "pa" && !(actor && (actor.role === "management" || actor.pa || (actor.manages && actor.manages.length)))) return { status: 403, body: { error: "Management or Personal Assistant access required" } };
       const params = {}; r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
@@ -269,9 +270,10 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const names = await staffNames(c.store), offices = await officeMap(c.store);
     const sOff = new Map((await c.store.find("staff")).map((x) => [x.id, x.office_id]));
     const ev = asg.length ? await c.store.find("task_evidence", { assignment_id: asg.map((a) => a.id) }) : [];
+    const tf = tasks.size ? await c.store.find("files", { task_id: [...tasks.keys()] }, { order: [["created_at", "asc"], ["id", "asc"]] }) : [];
     let rows = asg.filter((a) => tasks.has(a.task_id)).map((a) => {
       const t = tasks.get(a.task_id);
-      return { id: a.id, task_id: t.id, title: t.title, description: t.description, office_id: sOff.get(a.staff_id) || t.office_id || null, office: (offices.get(sOff.get(a.staff_id) || t.office_id) || {}).name || null, staff_id: a.staff_id, staff_name: names.get(a.staff_id), created_by: t.created_by, priority: t.priority, start_date: t.start_date, due_date: t.due_date, expected_output: t.expected_output, kpi_id: t.kpi_id, meeting_id: t.meeting_id, status: effStatus(a, t, c.today), stored_status: a.status, actual_output: a.actual_output, evidence_url: a.evidence_url, evidence: ev.filter((e) => e.assignment_id === a.id), submitted_at: a.submitted_at, completion_date: a.completion_date, verification_status: a.verification_status, verified_by: a.verified_by, management_comment: a.management_comment, performance_score: a.performance_score };
+      return { id: a.id, task_id: t.id, title: t.title, description: t.description, office_id: sOff.get(a.staff_id) || t.office_id || null, office: (offices.get(sOff.get(a.staff_id) || t.office_id) || {}).name || null, staff_id: a.staff_id, staff_name: names.get(a.staff_id), created_by: t.created_by, priority: t.priority, start_date: t.start_date, due_date: t.due_date, expected_output: t.expected_output, kpi_id: t.kpi_id, meeting_id: t.meeting_id, status: effStatus(a, t, c.today), stored_status: a.status, actual_output: a.actual_output, evidence_url: a.evidence_url, evidence: ev.filter((e) => e.assignment_id === a.id), submitted_at: a.submitted_at, completion_date: a.completion_date, verification_status: a.verification_status, verified_by: a.verified_by, management_comment: a.management_comment, performance_score: a.performance_score, files: tf.filter((f) => f.task_id === a.task_id && f.staff_id === a.staff_id).map(fileInfo) };
     });
     if (team) rows = rows.filter((r) => team.has(r.staff_id));
     if (q.month) { const { from, to } = E.monthRange(monthV(q.month)); rows = rows.filter((r) => r.due_date >= from && r.due_date < to); }
@@ -346,7 +348,8 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (t.cancelled || a.status === "CANCELLED") throw conflict("This task was cancelled.");
     if (!["TODO", "IN_PROGRESS"].includes(a.status)) throw conflict(a.status === "SUBMITTED" ? "Already submitted and waiting for verification." : "This task is already verified.");
     const out = str(c.body.actual_output, "actual_output"), url = str(c.body.evidence_url, "evidence_url", { max: 1000 }); const evs = Array.isArray(c.body.evidence) ? c.body.evidence : [];
-    if (!out && !url && !evs.length) throw bad("Describe the output or add evidence before submitting");
+    const attached = (await tx.find("files", { task_id: a.task_id, staff_id: a.staff_id })).length;
+    if (!out && !url && !evs.length && !attached) throw bad("Describe the output or add evidence before submitting");
     const stamp = new Date().toISOString();
     const [u] = await tx.update("task_assignments", { id: a.id }, { status: "SUBMITTED", actual_output: out, evidence_url: url, submitted_at: stamp, submitted_date: c.today, verification_status: "PENDING", updated_at: stamp });
     for (const e of evs) await tx.insert("task_evidence", { assignment_id: a.id, kind: oneOf(e.kind, ["URL", "NOTE", "FILE"], "evidence kind", "URL"), reference: str(e.reference, "evidence reference", { req: true, max: 1000 }), description: str(e.description, "evidence description"), added_by: c.actor.name });
@@ -451,12 +454,13 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const ms = await c.store.find("meetings", w, { order: [["meeting_date", "desc"], ["id", "desc"]] });
     const att = ms.length ? await c.store.find("meeting_attendance", { meeting_id: ms.map((m) => m.id) }) : [];
     const sid = c.actor.role === "staff" ? c.actor.staffId : null;
-    return ms.filter((m) => !sid || m.owner_staff_id === sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid)).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
+    const seen = (m) => !sid || m.owner_staff_id === sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid) || (c.actor.pa && m.owner_staff_id == null); // the Personal Assistant manages every non-private meeting
+    return ms.filter(seen).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
   });
   get("/meetings/:id", "any", async (c) => {
     const m = await c.store.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
     const names = await staffNames(c.store); let att = (await c.store.find("meeting_attendance", { meeting_id: m.id })).map((a) => ({ ...a, staff_name: names.get(a.staff_id) }));
-    if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
+    if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId && !(c.actor.pa && m.owner_staff_id == null)) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
     return { ...m, attendance: att };
   });
   const syncParticipants = async (tx, meeting, ids) => {
@@ -466,8 +470,11 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   };
   const actionPoints = (v) => (Array.isArray(v) ? v : []).map((a) => ({ text: str(a.text, "action point text", { req: true }), assignee_ids: (a.assignee_ids || []).map((x) => idV(x, "assignee")), due_date: dateV(a.due_date, "action point due_date", false), priority: oneOf(a.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), task_id: a.task_id || null }));
   // A department head's meetings are private: only the invited team members, the head and management can see them.
-  const ownMeeting = (c, m) => { if (isHead(c) && m.owner_staff_id !== c.actor.staffId) throw forbid("You can only manage meetings you called"); };
-  post("/meetings", "team", async (c) => {
+  const ownMeeting = (c, m) => {
+    if (isHead(c) && m.owner_staff_id !== c.actor.staffId) throw forbid("You can only manage meetings you called");
+    if (c.actor.pa && !isHead(c) && m.owner_staff_id != null) throw forbid("That is a private team meeting");
+  };
+  post("/meetings", "meet", async (c) => {
     const b = c.body; let pids = [];
     if (isHead(c)) { if (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length) throw bad("Choose who must attend"); await needTeam(c, b.required_staff_ids); }
     const mtg = await c.store.tx(async (tx) => {
@@ -478,7 +485,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     await N.notify(pids, { kind: "MEETING", title: "Meeting: " + mtg.title, body: `${String(mtg.meeting_date).slice(0, 10)}${mtg.meeting_time ? " at " + String(mtg.meeting_time).slice(0, 5) : ""}${mtg.location ? " - " + mtg.location : ""}`, link: "me", created_by: c.actor.name });
     return mtg;
   });
-  patch("/meetings/:id", "team", async (c) => { let info = null; const out = await c.store.tx(async (tx) => {
+  patch("/meetings/:id", "meet", async (c) => { let info = null; const out = await c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {}; ownMeeting(c, m);
     if (isHead(c) && Array.isArray(b.required_staff_ids)) await needTeam({ ...c, store: tx }, b.required_staff_ids);
     if (b.title !== undefined) p.title = str(b.title, "title", { req: true, max: 300 });
@@ -534,13 +541,79 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     return { created, skipped: pts.length - created, action_points: pts };
   }); for (const t of made) await N.notify(t.assignees.map((a) => a.id), { kind: "TASK_ASSIGNED", title: "New task: " + t.title, body: `Due ${String(t.due_date).slice(0, 10)}. From a meeting action point.`, link: "tasks", created_by: c.actor.name }); return out; });
 
+
+  // ======================= files (uploads attached to tasks, weekly reports and meeting minutes) =======================
+  // Stored in the database (the host's disk is wiped on every deploy). Downloadable by management; staff see their own.
+  const MAX_FILE = 25 * 1024 * 1024;
+  const OK_EXT = new Set(["txt", "md", "csv", "tsv", "json", "zip", "7z", "rar", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "png", "jpg", "jpeg", "gif", "webp", "mp4", "mov", "webm", "mkv", "avi", "m4v", "mp3", "wav", "m4a"]);
+  const toBuf = (x) => (Buffer.isBuffer(x) ? x : x && x.type === "Buffer" && Array.isArray(x.data) ? Buffer.from(x.data) : null);
+  const cleanFileName = (n) => String(n || "file").replace(/[\\/\0\r\n"<>:*?|]/g, "_").replace(/^\.+/, "").slice(0, 150) || "file";
+  const fileInfo = (f) => ({ id: f.id, name: f.name, size_bytes: f.size_bytes, created_at: f.created_at });
+  const SAFE_MIME = /^(text\/(plain|csv|markdown)|application\/(zip|pdf|json|x-zip-compressed|vnd\.[\w.+-]+|msword)|video\/[\w.+-]+|audio\/[\w.+-]+|image\/(png|jpe?g|gif|webp))$/i;
+  post("/files", "any", async (c) => {
+    const q = { ...c.body, ...c.query }, data = toBuf(c.body.data);
+    if (!data || !data.length) throw bad("Choose a file to upload");
+    if (data.length > MAX_FILE) throw bad(`That file is too large (${Math.round(data.length / 1048576)} MB). The limit is ${MAX_FILE / 1048576} MB. For bigger files, upload to a drive and paste the link as evidence.`);
+    const name = cleanFileName(q.name), ext = (name.split(".").pop() || "").toLowerCase();
+    if (!OK_EXT.has(ext)) throw bad("That file type is not allowed. Use text, csv, zip, video, audio, images, PDF or Office files.");
+    const isStaff = c.actor.role === "staff", me = isStaff ? c.actor.staffId : null;
+    const row = { name, mime: SAFE_MIME.test(String(q.mime || "")) ? String(q.mime).toLowerCase() : "application/octet-stream", size_bytes: data.length, kind: "OTHER", task_id: null, report_week: null, meeting_id: null, staff_id: me, uploaded_by: c.actor.name, note: str(q.note, "note", { max: 500 }) };
+    if (q.task_id) {
+      const tid = idV(q.task_id, "task_id"), sid = isStaff ? me : (q.staff_id ? idV(q.staff_id, "staff_id") : null);
+      if (isStaff || sid) { const a = await c.store.one("task_assignments", { task_id: tid, staff_id: sid }); if (!a) throw notFound("That task is not assigned to you"); }
+      else if (!(await c.store.one("admin_tasks", { id: tid }))) throw notFound("Task not found");
+      Object.assign(row, { kind: "TASK", task_id: tid, staff_id: sid });
+    } else if (q.report_week) {
+      const wk = E.mondayOf(dateV(q.report_week, "report_week")), sid = isStaff ? me : (q.staff_id ? idV(q.staff_id, "staff_id") : null);
+      if (isStaff && wk > E.mondayOf(c.today)) throw bad("You cannot attach files to a future week");
+      if (!sid) throw bad("staff_id is required");
+      Object.assign(row, { kind: "REPORT", report_week: wk, staff_id: sid });
+    } else if (q.meeting_id) {
+      const m = await c.store.one("meetings", { id: idV(q.meeting_id, "meeting_id") }); if (!m) throw notFound("Meeting not found");
+      if (!(c.actor.role === "management" || c.actor.pa || isHead(c))) throw forbid("Only management, the Personal Assistant or the department head can attach meeting files");
+      if (isStaff) ownMeeting(c, m);
+      Object.assign(row, { kind: "MEETING", meeting_id: m.id });
+    } else throw bad("Say what the file is for: a task, a weekly report or a meeting");
+    const f = await c.store.tx(async (tx) => { const r = await tx.insert("files", row); await tx.insert("file_blobs", { file_id: r.id, data }); return r; });
+    await P.audit(c.store, c.actor, { action: "FILE_UPLOADED", entity: "file", entity_id: f.id, staff_id: row.staff_id, reason: `${row.kind}: ${name} (${data.length} bytes)` });
+    return fileInfo(f);
+  });
+  async function visibleFiles(c) {
+    let rows = await c.store.find("files", {}, { order: [["created_at", "desc"], ["id", "desc"]] });
+    if (c.actor.role === "management") return rows;
+    const me = c.actor.staffId, team = isHead(c) ? await teamIds(c) : null, mt = c.actor.pa ? new Map((await c.store.find("meetings")).map((m) => [m.id, m])) : null;
+    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && mt.get(f.meeting_id).owner_staff_id == null));
+  }
+  get("/files", "any", async (c) => {
+    const q = c.query; let rows = await visibleFiles(c);
+    if (q.kind) rows = rows.filter((f) => f.kind === String(q.kind).toUpperCase()); if (q.staff_id) rows = rows.filter((f) => f.staff_id === Number(q.staff_id)); if (q.task_id) rows = rows.filter((f) => f.task_id === Number(q.task_id)); if (q.meeting_id) rows = rows.filter((f) => f.meeting_id === Number(q.meeting_id));
+    if (q.month) rows = rows.filter((f) => String(f.created_at).slice(0, 7) === String(q.month));
+    const names = await staffNames(c.store), tasks = new Map((await c.store.find("admin_tasks")).map((t) => [t.id, t.title])), meets = new Map((await c.store.find("meetings")).map((m) => [m.id, m.title])), offices = await officeMap(c.store), sOff = new Map((await c.store.find("staff")).map((x) => [x.id, x.office_id]));
+    let out = rows.map((f) => ({ ...f, staff_name: f.staff_id ? names.get(f.staff_id) || null : null, office: f.staff_id && sOff.get(f.staff_id) ? (offices.get(sOff.get(f.staff_id)) || {}).name || null : null, task_title: f.task_id ? tasks.get(f.task_id) || null : null, meeting_title: f.meeting_id ? meets.get(f.meeting_id) || null : null }));
+    if (q.q) { const t = String(q.q).toLowerCase(); out = out.filter((f) => [f.name, f.staff_name, f.task_title, f.meeting_title, f.uploaded_by, f.note].some((x) => String(x || "").toLowerCase().includes(t))); }
+    return out.slice(0, 1000);
+  });
+  get("/files/:id/download", "any", async (c) => {
+    const id = idV(c.params.id, "id"), f = (await visibleFiles(c)).find((x) => x.id === id); if (!f) throw notFound("File not found");
+    const b = await c.store.one("file_blobs", { file_id: id }); const data = b && toBuf(b.data); if (!data) throw notFound("The file content is missing");
+    return { __file: { name: f.name, mime: f.mime || "application/octet-stream", data } };
+  });
+  del("/files/:id", "any", async (c) => {
+    const id = idV(c.params.id, "id"), f = await c.store.one("files", { id }); if (!f) throw notFound("File not found");
+    if (c.actor.role !== "management" && !(f.staff_id === c.actor.staffId && f.uploaded_by === c.actor.name)) throw forbid("You can only delete files you uploaded");
+    await c.store.remove("file_blobs", { file_id: id }); await c.store.remove("files", { id });
+    await P.audit(c.store, c.actor, { action: "FILE_DELETED", entity: "file", entity_id: id, staff_id: f.staff_id, reason: f.name });
+    return { deleted: 1 };
+  });
+
   // ======================= weekly reports =======================
   const reportText = ["activities", "tasks_completed", "tasks_pending", "challenges", "achievements", "evidence", "next_priorities"];
   get("/reports", "any", async (c) => {
     const q = c.query, sid = who(c, q.staff_id, { optional: true }); const w = {}; if (sid) w.staff_id = sid; if (q.status) w.status = oneOf(q.status, ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"], "status");
     if (q.office_id) w.office_id = Number(q.office_id); if (q.month) Object.assign(w, monthWhere(q.month, "week_start")); if (q.week_start) w.week_start = E.mondayOf(dateV(q.week_start, "week_start"));
     const names = await staffNames(c.store);
-    return (await c.store.find("weekly_reports", w, { order: [["week_start", "desc"], ["id", "desc"]], limit: 500 })).map((r) => ({ ...r, staff_name: names.get(r.staff_id), due_date: E.addDays(r.week_start, 7 + (0)) }));
+    const rf = await c.store.find("files", { kind: "REPORT" }, { order: [["created_at", "asc"]] });
+    return (await c.store.find("weekly_reports", w, { order: [["week_start", "desc"], ["id", "desc"]], limit: 500 })).map((r) => ({ ...r, staff_name: names.get(r.staff_id), due_date: E.addDays(r.week_start, 7 + (0)), files: rf.filter((f) => f.staff_id === r.staff_id && String(f.report_week).slice(0, 10) === String(r.week_start).slice(0, 10)).map(fileInfo) }));
   });
   get("/reports/window", "any", async (c) => {
     const off = Number(process.env.SAP2_TZ_OFFSET_HOURS ?? 1); const wk = c.query.week_start ? E.mondayOf(dateV(c.query.week_start, "week_start")) : E.mondayOf(c.today);
@@ -726,10 +799,19 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
 
 // ---------- Express glue ----------
 function mount(app, api) {
+  const express = require("express");
+  // File uploads arrive as the raw request body (file name and links in the query string), up to 26 MB.
+  app.post("/api/admin/files", express.raw({ type: () => true, limit: "26mb" }), async (req, res, next) => {
+    try {
+      const r = await api.handle("POST", "/files", { query: req.query, body: { data: req.body }, actor: req.actor });
+      res.status(r.status).json(r.body);
+    } catch (e) { next(e); }
+  });
   app.use("/api/admin", async (req, res, next) => {
     try {
       const r = await api.handle(req.method, req.path, { query: req.query, body: req.body, actor: req.actor });
       if (!r) return next();
+      if (r.body && r.body.__file) { const f = r.body.__file; res.status(200).set({ "Content-Type": f.mime, "Content-Disposition": `attachment; filename="${f.name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(f.name)}`, "Content-Length": f.data.length, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store" }).send(f.data); return; }
       res.status(r.status).json(r.body);
     } catch (e) { next(e); }
   });

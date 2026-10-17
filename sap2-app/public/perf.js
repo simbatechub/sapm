@@ -308,7 +308,7 @@ ${reqReason('s_r', 'Required')}</div><div class="row"><button class="btn pr" onc
 <div class="row pf-noprint"><button class="btn pr" onclick="PF.newTask()">+ New task</button><button class="btn" onclick="PF.newDeliv()">+ New deliverable</button></div>
 <div class="pf-grid">${stat('Tasks', d.length)}${stat('Awaiting verification', cnt('SUBMITTED'))}${stat('Overdue', cnt('OVERDUE'))}${stat('Verified / completed', cnt('VERIFIED') + cnt('COMPLETED'))}</div>
 ${tbl(['Task', 'Staff', 'Office', 'Priority', 'Due', 'Status', 'Submission', ''], d.map(t => `<tr><td class="wrap" style="min-width:200px"><b>${e(t.title)}</b>${t.expected_output ? `<div class="pf-note">Expected: ${e(t.expected_output)}</div>` : ''}</td><td>${e(t.staff_name)}</td><td>${e(t.office || '—')}</td><td><span class="b ${prio[t.priority] || 'sbD'}">${e(label(t.priority))}</span></td><td>${t.due_date}</td><td>${statusBadge(t.status)}${t.performance_score != null ? `<div class="pf-note">Quality ${t.performance_score}%</div>` : ''}</td>
-<td class="wrap pf-det">${e(t.actual_output || '')}${t.evidence_url ? ` <a href="${e(t.evidence_url)}" target="_blank" rel="noopener" style="color:var(--or)">evidence</a>` : ''}${t.management_comment ? `<div>Mgmt: ${e(t.management_comment)}</div>` : ''}</td>
+<td class="wrap pf-det">${e(t.actual_output || '')}${t.files && t.files.length ? `<div>${fbtns(t.files)}</div>` : ''}${t.evidence_url ? ` <a href="${e(t.evidence_url)}" target="_blank" rel="noopener" style="color:var(--or)">evidence</a>` : ''}${t.management_comment ? `<div>Mgmt: ${e(t.management_comment)}</div>` : ''}</td>
 <td>${t.status === 'SUBMITTED' ? `<button class="btn pr" onclick="PF.review(${t.task_id},${t.staff_id})">Review</button>` : ['TODO', 'IN_PROGRESS'].includes(t.status) || t.status === 'OVERDUE' ? `<button class="btn" onclick="PF.submitFor(${t.task_id},${t.staff_id})">Record submission</button>` : ''}${['VERIFIED', 'COMPLETED', 'CANCELLED'].includes(t.status) ? '' : ` <button class="btn" onclick="PF.cancelTask(${t.task_id})">Cancel</button>`}</td></tr>`), 'No tasks for these filters.')}
 <h2 class="pf-h">Deliverables</h2>${!dl ? loading() : bad(dl) ? errBox(dl) : tbl(['Deliverable', 'Staff', 'Type', 'Expected', 'Status', 'Evidence', ''], dl.map(x => `<tr><td class="wrap"><b>${e(x.title)}</b></td><td>${e(x.staff_name)}</td><td>${e(x.deliverable_type || '—')}</td><td>${x.expected_date}${x.overdue ? ' <span class="b sbC">Overdue</span>' : ''}</td><td>${statusBadge(x.status)}${x.late ? ' <span class="b sbN">Late</span>' : ''}${x.quality_rating != null ? `<div class="pf-note">Quality ${x.quality_rating}/10</div>` : ''}</td><td>${x.evidence_url ? `<a href="${e(x.evidence_url)}" target="_blank" rel="noopener" style="color:var(--or)">open</a>` : '—'}</td>
 <td>${['EXPECTED', 'REJECTED'].includes(x.status) ? `<button class="btn" onclick="PF.submitDeliv(${x.id})">Record submission</button>` : x.status === 'SUBMITTED' ? `<button class="btn pr" onclick="PF.reviewDeliv(${x.id})">Review</button>` : ''}</td></tr>`), 'No deliverables this month.')}`;
@@ -433,7 +433,7 @@ ${ap.some(a => a.task_id) ? `<div class="pf-note">${ap.filter(a => a.task_id).le
       return head + `<div class="row pf-noprint"><button class="btn pr" onclick="PF.newAct()">+ Log activity</button></div>${tbl(['Date', 'Staff', 'Activity', 'Minutes', 'Output', 'Status', 'Review', ''], d.map(a => `<tr><td>${a.activity_date}</td><td>${e(a.staff_name)}</td><td class="wrap" style="min-width:200px"><b>${e(a.activity)}</b><div class="pf-note">${e(a.description || '')}</div></td><td>${a.minutes_spent == null ? '—' : a.minutes_spent}</td><td class="wrap pf-det">${e(a.output || '')}${a.evidence ? ` <a href="${e(a.evidence)}" target="_blank" rel="noopener" style="color:var(--or)">evidence</a>` : ''}</td><td>${statusBadge(a.status)}</td><td>${statusBadge(a.review_status)}${a.review_comment ? `<div class="pf-note">${e(a.review_comment)}</div>` : ''}</td><td>${a.review_status === 'UNREVIEWED' ? `<button class="btn" onclick="PF.reviewAct(${a.id},'REVIEWED')">Mark reviewed</button> <button class="btn" onclick="PF.reviewAct(${a.id},'FLAGGED')">Flag</button>` : ''}</td></tr>`), 'No activities logged for these filters.')}`;
     }
     const d = need('reps:' + qs(), () => A('/reports?' + qs())); if (!d) return head + loading(); if (bad(d)) return head + errBox(d);
-    return head + `<div class="row pf-noprint"><button class="btn pr" onclick="PF.newReport()">+ Record weekly report</button></div>${tbl(['Week of', 'Staff', 'Status', 'Timeliness', 'Highlights', 'Review', ''], d.map(r => `<tr><td>${r.week_start}</td><td>${e(r.staff_name)}</td><td>${statusBadge(r.status)}</td><td>${r.status === 'DRAFT' ? '—' : r.on_time ? '<span class="b sbS">On time</span>' : '<span class="b sbN">Late</span>'}</td><td class="wrap pf-det" style="min-width:220px">${e((r.achievements || r.activities || '').slice(0, 160))}</td><td class="wrap pf-det">${e(r.review_comment || '')}</td><td><button class="btn" onclick="PF.openReport(${r.id})">Open</button></td></tr>`), 'No weekly reports for these filters.')}`;
+    return head + `<div class="row pf-noprint"><button class="btn pr" onclick="PF.newReport()">+ Record weekly report</button></div>${tbl(['Week of', 'Staff', 'Status', 'Timeliness', 'Highlights', 'Review', ''], d.map(r => `<tr><td>${r.week_start}</td><td>${e(r.staff_name)}</td><td>${statusBadge(r.status)}</td><td>${r.status === 'DRAFT' ? '—' : r.on_time ? '<span class="b sbS">On time</span>' : '<span class="b sbN">Late</span>'}</td><td class="wrap pf-det" style="min-width:220px">${e((r.achievements || r.activities || '').slice(0, 160))}${r.files && r.files.length ? `<div>${fbtns(r.files)}</div>` : ''}</td><td class="wrap pf-det">${e(r.review_comment || '')}</td><td><button class="btn" onclick="PF.openReport(${r.id})">Open</button></td></tr>`), 'No weekly reports for these filters.')}`;
   }
   const RF = [['activities', 'Major activities'], ['tasks_completed', 'Tasks completed'], ['tasks_pending', 'Tasks pending'], ['challenges', 'Challenges'], ['achievements', 'Achievements'], ['evidence', 'Evidence / links'], ['next_priorities', 'Next week priorities']];
   function newReport() {
@@ -541,13 +541,74 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
     try { await A('/payroll/approve', { method: 'POST', body: { month: mo, items } }); toast('Payroll approved'); await refresh() } catch (err) { toast(err.message, 1) }
   }
 
+
+  /* ---------- file uploads / downloads (tasks, weekly reports, meeting minutes) ---------- */
+  const authH = () => Object.assign({ 'x-api-key': typeof KEY === 'undefined' ? '' : KEY }, window.SP ? (window.SP.mode == 'personal' ? { 'x-staff-id': window.SP.id, 'x-staff-code': window.SP.code } : { 'x-staff-id': window.SP.id, 'x-office-code': window.SP.code }) : {});
+  const fsize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const MAXF = 25 * 1048576;
+  async function upFile(file, q) {
+    if (file.size > MAXF) throw new Error(`${file.name} is ${fsize(file.size)}. The limit is 25 MB. Upload bigger files to a drive and paste the link as evidence.`);
+    const qs = new URLSearchParams(Object.assign({}, q, { name: file.name, mime: file.type || '' }));
+    const r = await fetch(BASE + '/api/admin/files?' + qs, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/octet-stream' }, authH()), body: file });
+    let j = null; try { j = await r.json() } catch (err) { }
+    if (!r.ok) throw new Error((j && j.error) || 'Upload failed (' + r.status + ')');
+    return j;
+  }
+  async function upFiles(list, q) { let n = 0; for (const f of list) { toast(`Uploading ${f.name} (${fsize(f.size)})…`); await upFile(f, q); n++ } return n }
+  async function dlFile(id) {
+    try {
+      const r = await fetch(BASE + '/api/admin/files/' + id + '/download', { headers: authH() });
+      if (!r.ok) { let j = null; try { j = await r.json() } catch (err) { } throw new Error((j && j.error) || 'Download failed') }
+      const cd = r.headers.get('content-disposition') || '', m = /filename\*=UTF-8''([^;]+)/i.exec(cd), name = m ? decodeURIComponent(m[1]) : 'file';
+      const url = URL.createObjectURL(await r.blob()), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) { toast(err.message, 1) }
+  }
+  const fbtns = fs => (fs || []).map(f => `<button class="pf-link" onclick="PF.dlFile(${f.id})" title="Download">&#128206; ${e(f.name)} <span class="pf-mu">(${fsize(f.size_bytes)})</span></button>`).join('<br>');
+  const FKIND = { TASK: 'Task', REPORT: 'Weekly report', MEETING: 'Meeting', OTHER: 'Other' };
+  function fl() {
+    const f = X.fl || (X.fl = { kind: '', q: '' }), key = 'files:' + f.kind + '|' + f.q;
+    const d = need(key, () => A('/files?' + new URLSearchParams({ kind: f.kind, q: f.q }))); if (!d) return `<h1>Files</h1>` + loading(); if (bad(d)) return `<h1>Files</h1>` + errBox(d);
+    const total = d.reduce((a, x) => a + (x.size_bytes || 0), 0);
+    return `<h1>Files</h1><div class="p">Every file staff attach to tasks, weekly reports and meeting minutes, with who sent it and when. Click a file to download it.</div>
+<div class="row pf-noprint"><select onchange="PF.X.fl.kind=this.value;render()">${[['', 'All files'], ['TASK', 'Task files'], ['REPORT', 'Weekly report files'], ['MEETING', 'Meeting files']].map(([v, l]) => `<option value="${v}" ${v === f.kind ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="Search file, person, task or meeting" value="${e(f.q)}" onchange="PF.X.fl.q=this.value;render()" style="max-width:340px"><span class="pf-mu">${d.length} file(s) &middot; ${fsize(total)}</span></div>
+${tbl(['Sent', 'File', 'Type', 'For', 'Sent by', 'Office', ''], d.map(x => `<tr><td>${new Date(x.created_at).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="wrap" style="min-width:180px"><button class="pf-link" onclick="PF.dlFile(${x.id})"><b>${e(x.name)}</b></button><div class="pf-note">${fsize(x.size_bytes)}${x.note ? ' · ' + e(x.note) : ''}</div></td><td><span class="b sbD">${FKIND[x.kind] || x.kind}</span></td><td class="wrap">${x.kind === 'TASK' ? e(x.task_title || 'Deleted task') : x.kind === 'REPORT' ? 'Week of ' + String(x.report_week).slice(0, 10) : x.kind === 'MEETING' ? e(x.meeting_title || 'Deleted meeting') : '—'}</td><td>${e(x.staff_name || x.uploaded_by || '—')}${x.staff_name && x.uploaded_by && x.uploaded_by !== x.staff_name ? `<div class="pf-note">uploaded by ${e(x.uploaded_by)}</div>` : ''}</td><td class="wrap">${e(x.office || '—')}</td><td><button class="btn" onclick="PF.dlFile(${x.id})">Download</button> <button class="btn" onclick="PF.delFile(${x.id})">Delete</button></td></tr>`), 'No files yet.')}`;
+  }
+  async function delFile(id) { if (!confirm('Delete this file? This cannot be undone.')) return; try { await A('/files/' + id, { method: 'DELETE' }); toast('File deleted'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
+  async function rUpload() {
+    const fl_ = [...(document.getElementById('rfl') || { files: [] }).files]; if (!fl_.length) return toast('Choose one or more files first', 1);
+    try { const n = await upFiles(fl_, { report_week: X.rw || mondayOf(nowYmd()) }); toast(n + ' file(s) attached to this week\'s report'); X.c = {}; render() } catch (err) { toast(err.message, 1); X.c = {}; render() }
+  }
+  /* Personal Assistant: set meetings, edit them, add minutes and files */
+  function paMeet() {
+    const d = need('pa:meet', () => A('/meetings')); if (!d) return loading(); if (bad(d)) return errBox(d);
+    const fc = need('pa:mfiles', () => A('/files?kind=MEETING')) || [];
+    return `<h1>Meetings</h1><div class="p">Set up meetings, change the time or place, and add the minutes and files. Everyone invited is notified straight away. Attendance is recorded by management.</div><div class="row pf-noprint"><button class="btn pr" onclick="PF.newMeeting()">Set a meeting</button></div>${tbl(['Date', 'Meeting', 'Invited', 'Minutes', 'Files', ''], d.filter(m => m.owner_staff_id == null).map(m => `<tr><td>${String(m.meeting_date).slice(0, 10)}${m.meeting_time ? '<div class="pf-note">' + String(m.meeting_time).slice(0, 5) + '</div>' : ''}</td><td class="wrap"><b>${e(m.title)}</b><div class="pf-note">${e(m.location || '')}</div></td><td>${m.participants}</td><td>${m.notes ? '<span class="b sbS">Added</span>' : '<span class="pf-mu">None yet</span>'}</td><td>${fc.filter(x => x.meeting_id === m.id).length || '—'}</td><td><button class="btn" onclick="PF.editMeeting(${m.id})">Edit time / details</button> <button class="btn pr" onclick="PF.paMin(${m.id})">Minutes & files</button></td></tr>`), 'No meetings yet.')}`;
+  }
+  async function paMin(id) {
+    let m, fs; try { [m, fs] = await Promise.all([A('/meetings/' + id), A('/files?meeting_id=' + id)]) } catch (err) { return toast(err.message, 1) }
+    window.__meet = m; const ap = m.action_points || [];
+    M(`<h2 style="font-size:24px">${e(m.title)}</h2><div class="pf-note">${String(m.meeting_date).slice(0, 10)} ${e(String(m.meeting_time || '').slice(0, 5))} ${e(m.location || '')}</div>
+<h2 class="pf-h">Minutes</h2><textarea id="mn" style="width:100%;min-height:120px" placeholder="Minutes / notes">${e(m.notes || '')}</textarea>
+<div class="pf-note" style="margin:8px 0 4px">Action points, one per line: <code>text | due date YYYY-MM-DD | names separated by ;</code></div><textarea id="map" style="width:100%;min-height:80px">${e(ap.map(a => [a.text, a.due_date || '', (a.assignee_ids || []).map(i => (m.attendance.find(x => x.staff_id === i) || {}).staff_name).join('; ')].join(' | ')).join('\n'))}</textarea>
+<h2 class="pf-h">Minutes files and attachments</h2>${fs.length ? `<div>${fbtns(fs)}</div>` : '<div class="pf-note">No files yet.</div>'}<div style="margin-top:8px"><input type="file" id="mfl" multiple><div class="pf-note">Word, PDF, text, video, CSV or ZIP, up to 25 MB each.</div></div>
+${mfoot('Save minutes', `PF.paSaveMin(${id})`)}`);
+  }
+  async function paSaveMin(id) {
+    const m = window.__meet, byName = n => (m.attendance.find(a => a.staff_name.toLowerCase() === n.trim().toLowerCase()) || {}).staff_id, old = m.action_points || [];
+    const pts = V('map').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [text, due, who_] = l.split('|').map(x => (x || '').trim()); const prev = old.find(o => o.text === text); return { text, due_date: due || null, assignee_ids: (who_ || '').split(';').map(byName).filter(Boolean), priority: 'MEDIUM', task_id: prev ? prev.task_id : null } });
+    try {
+      await A('/meetings/' + id, { method: 'PATCH', body: { notes: V('mn'), action_points: pts } });
+      const fl_ = [...(document.getElementById('mfl') || { files: [] }).files]; if (fl_.length) await upFiles(fl_, { meeting_id: id });
+      mcl(); toast('Minutes saved'); X.c = {}; render()
+    } catch (err) { toast(err.message, 1) }
+  }
   /* ======================================================= STAFF PORTAL (staff see and submit only their own work) ======================================================= */
   try { const s = JSON.parse(sessionStorage.getItem('sap2staff') || 'null'); if (s && s.id && s.code) window.SP = s } catch (err) { }
   const portalOn = () => !!window.SP;
   function portalExit() { logout() }
   const PT = [['me', 'My performance'], ['tasks', 'My tasks'], ['acts', 'My activities'], ['rep', 'Weekly report'], ['deliv', 'Deliverables'], ['notif', 'Notifications']];
   // Extra read-only screens for the Personal Assistant (she coordinates staff). Pay, bank and salary data are never sent to her.
-  const PA_T = [['sched', 'Weekly schedule'], ['dir', 'All staff'], ['pperf', 'Staff performance'], ['atasks', 'All tasks'], ['ann', 'Send announcement']];
+  const PA_T = [['pmeet', 'Meetings'], ['sched', 'Weekly schedule'], ['dir', 'All staff'], ['pperf', 'Staff performance'], ['atasks', 'All tasks'], ['ann', 'Send announcement']];
   const PA_CAMPS = ['Airport Road Campus', 'Ekehuan Campus', 'Ewah Campus', 'Ogida Campus', 'Ugbowo Campus'];
   function renderPortal() {
     const me0 = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (me0 && me0.pa) X.pa = true;
@@ -555,10 +616,10 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
     const tabs = PT.concat(X.pa ? PA_T : X.head ? HEAD_T : []);
     const lab = (k, l) => k === 'notif' && X.unread ? `${l} <span class="b sbC">${X.unread}</span>` : l;
     $('nv').innerHTML = tabs.map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l)}</button>`).join('') + `<button onclick="PF.portalExit()">Exit staff portal</button>`;
-    $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['sched', 'atasks'] : X.head ? ['htasks', 'hmeet'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks').replace('Team tasks', 'Team').replace('Team meetings', 'Meetings'))}</button>`).join('');
+    $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['pmeet', 'atasks'] : X.head ? ['htasks', 'hmeet'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks').replace('Team tasks', 'Team').replace('Team meetings', 'Meetings'))}</button>`).join('');
     if (!X.poll) { X.poll = setInterval(pollUnread, 60000); pollUnread() }
     let body;
-    if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'ann') body = paAnn();
+    if (X.pa && X.pt === 'pmeet') body = paMeet(); else if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'ann') body = paAnn();
     else if (X.head && X.pt === 'hperf') body = paPerf(); else if (X.head && X.pt === 'htasks') body = hTasks(); else if (X.head && X.pt === 'hmeet') body = hMeet(); else if (X.head && X.pt === 'ann') body = paAnn();
     else if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
     $('m').innerHTML = mh() + body;
@@ -648,11 +709,11 @@ ${(cl.data_quality && cl.data_quality.warnings || []).length ? `<div class="fm">
   }
   function ptasks() {
     const d = need('mt:' + X.pm, () => A('/tasks?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
-    return `<h1>My tasks</h1><div class="p">Start a task, then submit your output and evidence. Management verifies it.</div>${mnav()}${tbl(['Task', 'Due', 'Status', 'Expected', 'Feedback', ''], d.map(t => `<tr><td class="wrap" style="min-width:200px"><b>${e(t.title)}</b><div class="pf-note">${e(t.description || '')}</div></td><td>${t.due_date}</td><td>${statusBadge(t.status)}</td><td class="wrap pf-det">${e(t.expected_output || '')}</td><td class="wrap pf-det">${e(t.management_comment || '')}</td><td>${t.status === 'TODO' ? `<button class="btn" onclick="PF.pStart(${t.task_id})">Start</button> ` : ''}${['TODO', 'IN_PROGRESS', 'OVERDUE'].includes(t.status) ? `<button class="btn pr" onclick="PF.pSubmit(${t.task_id})">Submit</button>` : ''}</td></tr>`), 'No tasks assigned to you this month.')}`;
+    return `<h1>My tasks</h1><div class="p">Start a task, then submit your output and evidence. Management verifies it.</div>${mnav()}${tbl(['Task', 'Due', 'Status', 'Expected', 'Feedback', ''], d.map(t => `<tr><td class="wrap" style="min-width:200px"><b>${e(t.title)}</b><div class="pf-note">${e(t.description || '')}</div>${t.files && t.files.length ? `<div>${fbtns(t.files)}</div>` : ''}</td><td>${t.due_date}</td><td>${statusBadge(t.status)}</td><td class="wrap pf-det">${e(t.expected_output || '')}</td><td class="wrap pf-det">${e(t.management_comment || '')}</td><td>${t.status === 'TODO' ? `<button class="btn" onclick="PF.pStart(${t.task_id})">Start</button> ` : ''}${['TODO', 'IN_PROGRESS', 'OVERDUE'].includes(t.status) ? `<button class="btn pr" onclick="PF.pSubmit(${t.task_id})">Submit</button>` : ''}</td></tr>`), 'No tasks assigned to you this month.')}`;
   }
   async function pStart(id) { try { await A(`/tasks/${id}/start`, { method: 'POST', body: {} }); toast('Task started'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
-  function pSubmit(id) { M(`<h2 style="font-size:24px">Submit task</h2><div class="pf-fg">${fg('po', 'What you did', '<textarea id="po"></textarea>')}${fg('pe2', 'Evidence link', inp('pe2', '', 'placeholder="https://…"'))}</div>${mfoot('Submit', `PF.pDoSubmit(${id})`)}`) }
-  async function pDoSubmit(id) { try { await A(`/tasks/${id}/submit`, { method: 'POST', body: { actual_output: V('po'), evidence_url: V('pe2') } }); mcl(); toast('Submitted for verification'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
+  function pSubmit(id) { M(`<h2 style="font-size:24px">Submit task</h2><div class="pf-fg">${fg('po', 'What you did', '<textarea id="po"></textarea>')}${fg('pe2', 'Evidence link', inp('pe2', '', 'placeholder="https://…"'))}${fg('pfl', 'Attach files', '<input type="file" id="pfl" multiple><div class="pf-note">Text, CSV, ZIP, video, images, PDF or Office files, up to 25 MB each.</div>')}</div>${mfoot('Submit', `PF.pDoSubmit(${id})`)}`) }
+  async function pDoSubmit(id) { try { const fl_ = [...(document.getElementById('pfl') || { files: [] }).files]; if (fl_.length) await upFiles(fl_, { task_id: id }); await A(`/tasks/${id}/submit`, { method: 'POST', body: { actual_output: V('po'), evidence_url: V('pe2') } }); mcl(); toast('Submitted for verification'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
   function pacts() {
     const d = need('ma:' + X.pm, () => A('/activities?month=' + X.pm)); if (!d) return loading(); if (bad(d)) return errBox(d);
     return `<h1>My activities</h1><div class="p">Log what you work on each day.</div>${mnav()}<div class="row"><button class="btn pr" onclick="PF.pNewAct()">+ Log activity</button></div>${tbl(['Date', 'Activity', 'Minutes', 'Output', 'Review'], d.map(a => `<tr><td>${a.activity_date}</td><td class="wrap"><b>${e(a.activity)}</b><div class="pf-note">${e(a.description || '')}</div></td><td>${a.minutes_spent == null ? '—' : a.minutes_spent}</td><td class="wrap pf-det">${e(a.output || '')}</td><td>${statusBadge(a.review_status)}</td></tr>`), 'Nothing logged yet.')}`;
@@ -676,6 +737,7 @@ ${(cl.data_quality && cl.data_quality.warnings || []).length ? `<div class="fm">
 <div class="row pf-noprint"><button class="btn" onclick="PF.rwk(-7)">← Previous week</button><input type="date" id="rwpick" value="${wk}" onchange="PF.rwk(0,this.value)" style="width:170px"><button class="btn" onclick="PF.rwk(7)" ${wk >= thisWk ? 'disabled' : ''}>Next week →</button><button class="btn" onclick="PF.rwk(0,'${thisWk}')">This week</button><span class="pf-mu">Week of ${wk} to ${addD(wk, 6)}</span></div>
 ${banner}<div class="c">${locked ? '' : `<div id="rdrop" style="border:2px dashed var(--bd,#999);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px" ondragover="event.preventDefault()" ondrop="PF.rdrop(event)">Drop your report file here (.txt, .md, .csv) or <label style="text-decoration:underline;cursor:pointer">browse<input type="file" accept=".txt,.md,.csv,.json,text/plain" style="display:none" onchange="PF.rfile(this.files[0])"></label><div class="pf-note">The text goes into "Major activities" so you can edit it. For PDF/Word files, upload to Drive and paste the link under Evidence / links.</div></div>`}
 <div class="pf-fg">${RF.map(([k, l]) => fg('rf_' + k, l, `<textarea id="rf_${k}" ${locked ? 'disabled' : ''}>${e(cur[k] || '')}</textarea>`)).join('')}</div>${locked ? `<div class="pf-note">${['SUBMITTED', 'APPROVED'].includes(cur.status) ? 'Submitted reports cannot be edited.' : 'This report cannot be edited right now.'}</div>` : future ? '' : `<div class="row" style="margin:10px 0 0"><button class="btn" onclick="PF.pSaveRep(false)">Save draft</button><button class="btn pr" onclick="PF.pSaveRep(true)">Submit report</button></div>`}</div>
+<h2 class="pf-h">Attach files to this week's report</h2><div class="c">${(() => { const wf = need('wf:' + wk, () => A('/files?kind=REPORT')); const mine = wf && !bad(wf) ? wf.filter(x => String(x.report_week).slice(0, 10) === wk) : null; return (mine === null ? '<div class="pf-note">Loading files…</div>' : mine.length ? `<div style="margin-bottom:8px">${fbtns(mine)}</div>` : '<div class="pf-note" style="margin-bottom:8px">No files attached yet.</div>') })()}<input type="file" id="rfl" multiple> <button class="btn pr" onclick="PF.rUpload()">Upload files</button><div class="pf-note">Videos, CSV, ZIP, text, images, PDF or Office files, up to 25 MB each. Management can download them.</div></div>
 <h2 class="pf-h">All my reports</h2>${tbl(['Week', 'Status', 'Timeliness', ''], d.map(r => `<tr><td>${r.week_start}</td><td>${statusBadge(r.status)}</td><td>${r.status === 'DRAFT' ? '—' : r.on_time ? 'On time' : 'Late'}</td><td><button class="btn" onclick="PF.rwk(0,'${r.week_start}')">Open</button></td></tr>`), 'No reports yet.', 'pf-tbl-small')}`;
   }
   function rwk(n, v) { X.rw = mondayOf(v || addD(X.rw || mondayOf(nowYmd()), n)); render() }
@@ -739,14 +801,14 @@ ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.s
   }
 
   /* ======================================================= wiring ======================================================= */
-  window.XV = { ap, tk, aa, mt, wr, ok, pr2, adm: admPage, pay: payPage };
+  window.XV = { ap, tk, aa, mt, wr, ok, pr2, fl, adm: admPage, pay: payPage };
   window.PF = {
     flags, att: () => ATT, X, tab: t => { X.tab = t; render() }, mv: d => { X.pm = mPlus(X.pm, d); render() }, setM: v => { if (/^\d{4}-\d{2}$/.test(v)) { X.pm = v; render() } },
     prof, recalc, finalize, reopenRv, doReopen, adjust, doAdjust, teamwork, doTeamwork, comment, doComment, decision, doDecision, approve, doApprove, calcAll, ack, assignOffice, doOffice,
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,
     recordAtt, saveAtt, newMeeting, saveMeeting, editMeeting, saveMeetingEdit, openMeeting, saveMeetAtt, saveMinutes, newReport, saveReport, openReport, doReport, newAct, saveAct, reviewAct, saveKpiResult, csv, approvePay,
-    portalOn, portalExit, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
+    portalOn, portalExit, dlFile, delFile, rUpload, paMin, paSaveMin, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
     pm: () => X.pm, setMonthFromPayroll: m => { X.pm = m }
   };
 })();
