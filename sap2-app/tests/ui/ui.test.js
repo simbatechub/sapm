@@ -115,7 +115,7 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await waitText("2026-10-08");
   });
   await step("meetings: create, record attendance, action point -> task", async () => {
-    await nav("Meetings"); await page.locator("button", { hasText: "+ New meeting" }).click(); await page.fill("#mti", "Monday standup"); await page.fill("#mda", "2026-10-19");
+    await nav("Meetings"); await page.locator("button", { hasText: "+ New meeting" }).click(); await page.waitForSelector("#mst input"); ok((await page.locator("#mst input").count()) > 5, "names to tick are listed"); ok(await page.locator("#mpv").count() === 1, "private checkbox present"); await page.fill("#mti", "Monday standup"); await page.fill("#mda", "2026-10-19");
     await page.locator("#mc button", { hasText: /^Create$/ }).click(); await waitText("Monday standup");
     await page.locator("tr", { hasText: "Monday standup" }).locator("button", { hasText: "Open" }).click(); await page.waitForSelector("#mn");
     await page.fill("#map", "Prepare slides | 2026-10-26 | Adelana Victor");
@@ -295,7 +295,7 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await pa.selectOption("#lof", { label: "Personal Assistant" }); await pa.fill("#loc", CODES.offices["Personal Assistant"]); await pa.locator("#lb").click(); await pa.waitForSelector("#lnm"); await pa.locator("#lb").click();
     await pa.waitForFunction(() => [...document.querySelectorAll("aside nav button")].some(b => /^Meetings$/.test(b.innerText.trim())), null, { timeout: 5000 });
     await pa.locator("aside nav button", { hasText: /^Meetings$/ }).click(); await pa.waitForSelector("text=Set a meeting");
-    await pa.locator("button", { hasText: "Set a meeting" }).click(); await pa.waitForSelector("#mti"); await pa.fill("#mti", "PA planning"); await pa.fill("#mda", "2026-11-05");
+    await pa.locator("button", { hasText: "Set a meeting" }).click(); await pa.waitForSelector("#mti"); await pa.waitForSelector("#mst input"); ok((await pa.locator("#mst input").count()) > 5, "PA sees names to tick"); await pa.fill("#mti", "PA planning"); await pa.fill("#mda", "2026-11-05");
     await pa.locator("#mc button", { hasText: /Create|Save/ }).last().click(); await pa.waitForSelector("tr:has-text('PA planning')", { timeout: 5000 });
     await pa.locator("tr", { hasText: "PA planning" }).locator("button", { hasText: "Minutes" }).click(); await pa.waitForSelector("#mn");
     await pa.fill("#mn", "Agreed the plan"); await pa.setInputFiles("#mfl", { name: "minutes.txt", mimeType: "text/plain", buffer: Buffer.from("minutes body") });
