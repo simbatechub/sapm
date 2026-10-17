@@ -454,15 +454,16 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     const ms = await c.store.find("meetings", w, { order: [["meeting_date", "desc"], ["id", "desc"]] });
     const att = ms.length ? await c.store.find("meeting_attendance", { meeting_id: ms.map((m) => m.id) }) : [];
     const sid = c.actor.role === "staff" ? c.actor.staffId : null;
-    const seen = (m) => !sid || m.owner_staff_id === sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid) || (c.actor.pa && m.owner_staff_id == null); // the Personal Assistant manages every non-private meeting
-    return ms.filter(seen).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
+    const seen = (m) => !sid || m.owner_staff_id === sid || att.some((a) => a.meeting_id === m.id && a.staff_id === sid) || (c.actor.pa && !priv(m)); // the Personal Assistant manages every non-private meeting
+    return ms.filter(seen).map((m) => { const a = att.filter((x) => x.meeting_id === m.id); const n = (s) => a.filter((x) => x.status === s).length; return { ...m, private: priv(m), mine: sid != null && m.owner_staff_id === sid, participants: a.length, present: n("PRESENT"), late: n("LATE"), absent: n("ABSENT"), excused: n("EXCUSED"), pending: n("PENDING") }; });
   });
   get("/meetings/:id", "any", async (c) => {
     const m = await c.store.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
     const names = await staffNames(c.store), types = new Map((await c.store.find("staff")).map((x) => [x.id, x.staff_type])); let att = (await c.store.find("meeting_attendance", { meeting_id: m.id })).map((a) => ({ ...a, staff_name: names.get(a.staff_id), staff_type: types.get(a.staff_id), instructor: types.get(a.staff_id) === "instructor" }));
-    if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId && !(c.actor.pa && m.owner_staff_id == null)) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
+    if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId && !(c.actor.pa && !priv(m))) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
     return { ...m, attendance: att };
   });
+  const priv = (m) => !!(m.is_private || m.owner_staff_id != null);
   const syncParticipants = async (tx, meeting, ids) => {
     const existing = await tx.find("meeting_attendance", { meeting_id: meeting.id });
     for (const id of ids) if (!existing.some((e) => e.staff_id === id)) { await staffOf(tx, id); await tx.insert("meeting_attendance", { meeting_id: meeting.id, staff_id: id }); }
@@ -472,13 +473,14 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   // A department head's meetings are private: only the invited team members, the head and management can see them.
   const ownMeeting = (c, m) => {
     if (isHead(c) && m.owner_staff_id !== c.actor.staffId) throw forbid("You can only manage meetings you called");
-    if (c.actor.pa && !isHead(c) && m.owner_staff_id != null) throw forbid("That is a private team meeting");
+    if (c.actor.pa && !isHead(c) && priv(m) && m.owner_staff_id !== c.actor.staffId) throw forbid("That is a private meeting");
   };
   post("/meetings", "meet", async (c) => {
-    const b = c.body; let pids = [];
+    const b = c.body; let pids = []; const wantPrivate = isHead(c) || b.is_private === true;
+    if (wantPrivate && !isHead(c) && (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length)) throw bad("Tick the people who should be in this private meeting");
     if (isHead(c)) { if (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length) throw bad("Choose who must attend"); await needTeam(c, b.required_staff_ids); }
     const mtg = await c.store.tx(async (tx) => {
-      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), owner_staff_id: isHead(c) ? c.actor.staffId : null, meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
+      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), is_private: wantPrivate, owner_staff_id: isHead(c) || (wantPrivate && c.actor.role === "staff") ? c.actor.staffId : null, meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
       const ids = Array.isArray(b.required_staff_ids) && b.required_staff_ids.length ? b.required_staff_ids.map((x) => idV(x, "required_staff_ids")) : (await P.adminStaff(tx)).map((s) => s.id);
       await syncParticipants(tx, m, ids); pids = ids; return m;
     });
@@ -488,6 +490,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   patch("/meetings/:id", "meet", async (c) => { let info = null; const out = await c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {}; ownMeeting(c, m);
     if (isHead(c) && Array.isArray(b.required_staff_ids)) await needTeam({ ...c, store: tx }, b.required_staff_ids);
+    if (b.is_private !== undefined && !isHead(c)) { p.is_private = b.is_private === true; if (c.actor.role === "staff") p.owner_staff_id = p.is_private ? c.actor.staffId : null; if (p.is_private && !(Array.isArray(b.required_staff_ids) ? b.required_staff_ids.length : (await tx.find("meeting_attendance", { meeting_id: m.id })).length)) throw bad("Tick the people who should be in this private meeting"); }
     if (b.title !== undefined) p.title = str(b.title, "title", { req: true, max: 300 });
     if (b.meeting_date !== undefined) p.meeting_date = dateV(b.meeting_date, "meeting_date");
     if (b.meeting_time !== undefined) p.meeting_time = timeV(b.meeting_time, "meeting_time");
@@ -582,7 +585,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     let rows = await c.store.find("files", {}, { order: [["created_at", "desc"], ["id", "desc"]] });
     if (c.actor.role === "management") return rows;
     const me = c.actor.staffId, team = isHead(c) ? await teamIds(c) : null, mt = c.actor.pa ? new Map((await c.store.find("meetings")).map((m) => [m.id, m])) : null;
-    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && mt.get(f.meeting_id).owner_staff_id == null));
+    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && (!priv(mt.get(f.meeting_id)) || mt.get(f.meeting_id).owner_staff_id === me)));
   }
   get("/files", "any", async (c) => {
     const q = c.query; let rows = await visibleFiles(c);

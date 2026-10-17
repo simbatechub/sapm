@@ -492,3 +492,22 @@ test("meetings: instructors can be invited, are notified, edit notifies them, an
   const paActor = { role: "staff", staffId: pa.id, name: pa.name, pa: true };
   assert.equal((await call("PATCH", "/meetings/" + m.id, { actor: paActor, body: { notes: "PA minutes", meeting_time: "15:00" } })).status, 200);
 });
+
+test("private meetings: only ticked people see them; PA and management can set them; PA cannot see management's private meetings", async () => {
+  const { ok, call, staff } = await setup();
+  const admins = Object.values(staff).filter((s) => s.staff_type === "admin"), [a, b, c3] = admins;
+  const larry = staff["Larry"];
+  assert.equal((await call("POST", "/meetings", { body: { title: "Nobody", meeting_date: "2026-10-22", is_private: true } })).status, 400, "private needs names");
+  const mm = await ok("POST", "/meetings", { body: { title: "Mgmt private", meeting_date: "2026-10-22", is_private: true, required_staff_ids: [a.id, larry.id] } });
+  assert.equal(mm.is_private, true);
+  const pa = { role: "staff", staffId: c3.id, name: c3.name, pa: true };
+  assert.equal((await ok("GET", "/meetings", { actor: pa })).some((m) => m.id === mm.id), false, "PA cannot see management's private meeting");
+  const pm = await ok("POST", "/meetings", { actor: pa, body: { title: "PA private", meeting_date: "2026-10-23", is_private: true, required_staff_ids: [a.id] } });
+  assert.ok((await ok("GET", "/meetings", { actor: pa })).find((m) => m.id === pm.id && m.mine && m.private), "PA sees her own private meeting");
+  assert.equal((await ok("GET", "/meetings", { actor: { role: "staff", staffId: a.id, name: a.name } })).filter((m) => [mm.id, pm.id].includes(m.id)).length, 2, "invitee sees both");
+  assert.equal((await ok("GET", "/meetings", { actor: { role: "staff", staffId: b.id, name: b.name } })).some((m) => [mm.id, pm.id].includes(m.id)), false, "uninvited staff see neither");
+  assert.equal((await call("PATCH", "/meetings/" + mm.id, { actor: pa, body: { notes: "x" } })).status, 403, "PA cannot edit management's private meeting");
+  assert.equal((await call("PATCH", "/meetings/" + pm.id, { actor: pa, body: { notes: "PA minutes" } })).status, 200);
+  const pub = await ok("POST", "/meetings", { body: { title: "Open", meeting_date: "2026-10-24" } });
+  assert.equal((await ok("GET", "/meetings", { actor: pa })).some((m) => m.id === pub.id), true, "PA still sees public meetings");
+});
