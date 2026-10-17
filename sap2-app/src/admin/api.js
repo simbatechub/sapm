@@ -576,6 +576,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
       if (!(c.actor.role === "management" || c.actor.pa || isHead(c))) throw forbid("Only management, the Personal Assistant or the department head can attach meeting files");
       if (isStaff) ownMeeting(c, m);
       Object.assign(row, { kind: "MEETING", meeting_id: m.id });
+    } else if (c.actor.role === "management" || c.actor.pa) { row.staff_id = isStaff ? me : null; /* a general file kept in the Files manager */
     } else throw bad("Say what the file is for: a task, a weekly report or a meeting");
     const f = await c.store.tx(async (tx) => { const r = await tx.insert("files", row); await tx.insert("file_blobs", { file_id: r.id, data }); return r; });
     await P.audit(c.store, c.actor, { action: "FILE_UPLOADED", entity: "file", entity_id: f.id, staff_id: row.staff_id, reason: `${row.kind}: ${name} (${data.length} bytes)` });
@@ -585,7 +586,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     let rows = await c.store.find("files", {}, { order: [["created_at", "desc"], ["id", "desc"]] });
     if (c.actor.role === "management") return rows;
     const me = c.actor.staffId, team = isHead(c) ? await teamIds(c) : null, mt = c.actor.pa ? new Map((await c.store.find("meetings")).map((m) => [m.id, m])) : null;
-    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && (!priv(mt.get(f.meeting_id)) || mt.get(f.meeting_id).owner_staff_id === me)));
+    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "TASK") || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && (!priv(mt.get(f.meeting_id)) || mt.get(f.meeting_id).owner_staff_id === me)));
   }
   get("/files", "any", async (c) => {
     const q = c.query; let rows = await visibleFiles(c);

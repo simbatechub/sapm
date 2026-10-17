@@ -511,3 +511,13 @@ test("private meetings: only ticked people see them; PA and management can set t
   const pub = await ok("POST", "/meetings", { body: { title: "Open", meeting_date: "2026-10-24" } });
   assert.equal((await ok("GET", "/meetings", { actor: pa })).some((m) => m.id === pub.id), true, "PA still sees public meetings");
 });
+
+test("files: PA can see task files and upload general files; staff cannot upload loose files", async () => {
+  const { ok, call, staff } = await setup();
+  const admins = Object.values(staff).filter((s) => s.staff_type === "admin"), pa = { role: "staff", staffId: admins[0].id, name: admins[0].name, pa: true };
+  const up = await ok("POST", "/files", { actor: pa, query: { name: "plan.txt", mime: "text/plain" }, body: { data: Buffer.from("hello") } });
+  assert.ok((await ok("GET", "/files", { actor: pa })).some((f) => f.id === up.id && f.kind === "OTHER"), "PA sees her own upload");
+  assert.ok((await ok("GET", "/files")).some((f) => f.id === up.id), "management sees it too");
+  const plain = { role: "staff", staffId: admins[1].id, name: admins[1].name };
+  assert.equal((await call("POST", "/files", { actor: plain, query: { name: "x.txt" }, body: { data: Buffer.from("x") } })).status, 400);
+});
