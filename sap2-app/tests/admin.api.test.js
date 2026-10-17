@@ -417,3 +417,16 @@ test("Creative Director (department head): sees and manages only Content Creator
   // other staff get none of this
   assert.equal((await call("POST", "/meetings", { actor: CC, body: { title: "x", meeting_date: "2026-10-15", required_staff_ids: [sm.id] } })).status, 403);
 });
+
+test("meetings: invitees are notified on creation; changing time/place notifies everyone involved; new invitees get the invitation", async () => {
+  const { ok, call, staff } = await setup();
+  const by = (n) => staff[Object.keys(staff).find((x) => x.includes(n))], a = by("Adelana"), i = by("Isibor"), c = by("Chidozie");
+  const m = await ok("POST", "/meetings", { body: { title: "Weekly sync", meeting_date: "2026-11-05", meeting_time: "10:00", location: "Zoom", required_staff_ids: [a.id, i.id] } });
+  const inbox = async (s) => (await ok("GET", "/notifications", { actor: staffActor(s) })).items;
+  assert.ok((await inbox(a)).some((n) => /Meeting: Weekly sync/.test(n.title)) && (await inbox(i)).some((n) => /Meeting: Weekly sync/.test(n.title)));
+  await ok("PATCH", `/meetings/${m.id}`, { body: { meeting_time: "14:30", location: "Office", required_staff_ids: [a.id, i.id, c.id] } });
+  const up = (await inbox(a)).find((n) => /Meeting updated: Weekly sync/.test(n.title)); assert.ok(up && /time, place/.test(up.body) && /14:30/.test(up.body));
+  assert.ok((await inbox(c)).some((n) => /^Meeting: Weekly sync/.test(n.title)) && !(await inbox(c)).some((n) => /updated/.test(n.title)), "new invitee gets the invitation only");
+  const before = (await inbox(a)).length; await ok("PATCH", `/meetings/${m.id}`, { body: { agenda: "Only the agenda changed" } });
+  assert.equal((await inbox(a)).length, before, "agenda-only edits do not spam");
+});

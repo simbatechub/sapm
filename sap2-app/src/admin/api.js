@@ -478,7 +478,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     await N.notify(pids, { kind: "MEETING", title: "Meeting: " + mtg.title, body: `${String(mtg.meeting_date).slice(0, 10)}${mtg.meeting_time ? " at " + String(mtg.meeting_time).slice(0, 5) : ""}${mtg.location ? " - " + mtg.location : ""}`, link: "me", created_by: c.actor.name });
     return mtg;
   });
-  patch("/meetings/:id", "team", async (c) => c.store.tx(async (tx) => {
+  patch("/meetings/:id", "team", async (c) => { let info = null; const out = await c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {}; ownMeeting(c, m);
     if (isHead(c) && Array.isArray(b.required_staff_ids)) await needTeam({ ...c, store: tx }, b.required_staff_ids);
     if (b.title !== undefined) p.title = str(b.title, "title", { req: true, max: 300 });
@@ -489,12 +489,23 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (b.agenda !== undefined) p.agenda = str(b.agenda, "agenda");
     if (b.notes !== undefined) p.notes = str(b.notes, "notes");
     if (b.action_points !== undefined) p.action_points = actionPoints(b.action_points);
+    const before = (await tx.find("meeting_attendance", { meeting_id: m.id })).map((r) => r.staff_id);
     const recorded = await tx.find("meeting_attendance", { meeting_id: m.id });
     if ((p.meeting_date || p.title) && recorded.some((r) => r.status !== "PENDING")) throw conflict("Attendance was already recorded. The title and date can no longer be changed.");
     const [u] = Object.keys(p).length ? await tx.update("meetings", { id: m.id }, p) : [m];
     if (Array.isArray(b.required_staff_ids)) await syncParticipants(tx, u, b.required_staff_ids.map((x) => idV(x, "required_staff_ids")));
+    const after = (await tx.find("meeting_attendance", { meeting_id: m.id })).map((r) => r.staff_id), d10 = (x) => String(x || "").slice(0, 10), t5 = (x) => String(x || "").slice(0, 5);
+    const changed = []; if (d10(m.meeting_date) !== d10(u.meeting_date)) changed.push("date"); if (t5(m.meeting_time) !== t5(u.meeting_time)) changed.push("time"); if ((m.location || "") !== (u.location || "")) changed.push("place"); if (m.title !== u.title) changed.push("title");
+    info = { u, changed, added: after.filter((i) => !before.includes(i)), others: after.filter((i) => before.includes(i)) };
     return u;
-  }));
+  });
+  // Everyone involved is told straight away: new invitees get the invitation, existing ones hear what changed.
+  if (info) {
+    const when = `${String(info.u.meeting_date).slice(0, 10)}${info.u.meeting_time ? " at " + String(info.u.meeting_time).slice(0, 5) : ""}${info.u.location ? " - " + info.u.location : ""}`;
+    if (info.added.length) await N.notify(info.added, { kind: "MEETING", title: "Meeting: " + info.u.title, body: when, link: "me", created_by: c.actor.name });
+    if (info.changed.length && info.others.length) await N.notify(info.others, { kind: "MEETING", title: "Meeting updated: " + info.u.title, body: `The ${info.changed.join(", ")} changed. Now: ${when}`, link: "me", created_by: c.actor.name });
+  }
+  return out; });
   post("/meetings/:id/attendance", "team", async (c) => c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); ownMeeting(c, m);
     const list = Array.isArray(c.body.records) ? c.body.records : []; if (!list.length) throw bad("records must be a non-empty list");

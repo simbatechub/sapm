@@ -121,6 +121,10 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await page.fill("#map", "Prepare slides | 2026-10-26 | Adelana Victor");
     await page.locator("#mc button", { hasText: "Save & create tasks" }).click(); await page.waitForTimeout(500); await shot("08-meeting");
     ok((await page.locator("#mc").innerText()).includes("already linked"), "action point should be linked to a task");
+    ok((await page.locator("#mc").innerText()).includes("Attendance"), "attendance can be recorded even with daily attendance tracking off");
+    await page.locator("#mc button", { hasText: "Edit time / details" }).click(); await page.waitForSelector("#mtm"); await page.fill("#mtm", "15:30"); await page.fill("#mlo", "Boardroom");
+    await page.locator("#mc button", { hasText: /^Save changes$/ }).click(); await page.waitForFunction(() => document.querySelector("#mc").innerText.includes("Boardroom") && document.querySelector("#mc").innerText.includes("15:30"), null, { timeout: 5000 });
+    const mt = (await api("GET", "/meetings?month=2026-10")).find(m => m.title === "Monday standup"); ok(String(mt.meeting_time).startsWith("15:30") && mt.location === "Boardroom", "meeting time and place were saved");
     await page.locator("#mc button", { hasText: /^Close$/ }).click();
   });
   await step("weekly reports: review + activities", async () => {
