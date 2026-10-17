@@ -521,3 +521,13 @@ test("files: PA can see task files and upload general files; staff cannot upload
   const plain = { role: "staff", staffId: admins[1].id, name: admins[1].name };
   assert.equal((await call("POST", "/files", { actor: plain, query: { name: "x.txt" }, body: { data: Buffer.from("x") } })).status, 400);
 });
+
+test("meetings: type PRIVATE makes the meeting private and needs names", async () => {
+  const { ok, call, staff } = await setup();
+  const a = Object.values(staff).find((x) => x.staff_type === "admin"), larry = staff["Larry"];
+  assert.equal((await call("POST", "/meetings", { body: { title: "P", meeting_date: "2026-10-22", meeting_type: "PRIVATE" } })).status, 400);
+  const m = await ok("POST", "/meetings", { body: { title: "P", meeting_date: "2026-10-22", meeting_type: "PRIVATE", required_staff_ids: [larry.id] } });
+  assert.equal(m.is_private, true);
+  const g = await ok("PATCH", "/meetings/" + m.id, { body: { meeting_type: "GENERAL" } });
+  assert.equal(g.is_private, false, "changing the type back makes it public");
+});

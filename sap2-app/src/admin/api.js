@@ -476,11 +476,11 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (c.actor.pa && !isHead(c) && priv(m) && m.owner_staff_id !== c.actor.staffId) throw forbid("That is a private meeting");
   };
   post("/meetings", "meet", async (c) => {
-    const b = c.body; let pids = []; const wantPrivate = isHead(c) || b.is_private === true;
+    const b = c.body; let pids = []; const wantPrivate = isHead(c) || b.is_private === true || b.meeting_type === "PRIVATE";
     if (wantPrivate && !isHead(c) && (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length)) throw bad("Tick the people who should be in this private meeting");
     if (isHead(c)) { if (!Array.isArray(b.required_staff_ids) || !b.required_staff_ids.length) throw bad("Choose who must attend"); await needTeam(c, b.required_staff_ids); }
     const mtg = await c.store.tx(async (tx) => {
-      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), is_private: wantPrivate, owner_staff_id: isHead(c) || (wantPrivate && c.actor.role === "staff") ? c.actor.staffId : null, meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
+      const m = await tx.insert("meetings", { title: str(b.title, "title", { req: true, max: 300 }), meeting_date: dateV(b.meeting_date, "meeting_date"), meeting_time: timeV(b.meeting_time, "meeting_time"), location: str(b.location, "location", { max: 300 }), is_private: wantPrivate, owner_staff_id: isHead(c) || (wantPrivate && c.actor.role === "staff") ? c.actor.staffId : null, meeting_type: oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT", "PRIVATE"], "meeting_type", "GENERAL"), agenda: str(b.agenda, "agenda"), notes: str(b.notes, "notes"), action_points: actionPoints(b.action_points), created_by: c.actor.name });
       const ids = Array.isArray(b.required_staff_ids) && b.required_staff_ids.length ? b.required_staff_ids.map((x) => idV(x, "required_staff_ids")) : (await P.adminStaff(tx)).map((s) => s.id);
       await syncParticipants(tx, m, ids); pids = ids; return m;
     });
@@ -490,12 +490,13 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   patch("/meetings/:id", "meet", async (c) => { let info = null; const out = await c.store.tx(async (tx) => {
     const m = await tx.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found"); const b = c.body, p = {}; ownMeeting(c, m);
     if (isHead(c) && Array.isArray(b.required_staff_ids)) await needTeam({ ...c, store: tx }, b.required_staff_ids);
+    if (b.meeting_type !== undefined && b.is_private === undefined && !isHead(c)) b.is_private = b.meeting_type === "PRIVATE";
     if (b.is_private !== undefined && !isHead(c)) { p.is_private = b.is_private === true; if (c.actor.role === "staff") p.owner_staff_id = p.is_private ? c.actor.staffId : null; if (p.is_private && !(Array.isArray(b.required_staff_ids) ? b.required_staff_ids.length : (await tx.find("meeting_attendance", { meeting_id: m.id })).length)) throw bad("Tick the people who should be in this private meeting"); }
     if (b.title !== undefined) p.title = str(b.title, "title", { req: true, max: 300 });
     if (b.meeting_date !== undefined) p.meeting_date = dateV(b.meeting_date, "meeting_date");
     if (b.meeting_time !== undefined) p.meeting_time = timeV(b.meeting_time, "meeting_time");
     if (b.location !== undefined) p.location = str(b.location, "location", { max: 300 });
-    if (b.meeting_type !== undefined) p.meeting_type = oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT"], "meeting_type");
+    if (b.meeting_type !== undefined) p.meeting_type = oneOf(b.meeting_type, ["GENERAL", "MANDATORY", "TRAINING", "EVENT", "PROJECT", "PRIVATE"], "meeting_type");
     if (b.agenda !== undefined) p.agenda = str(b.agenda, "agenda");
     if (b.notes !== undefined) p.notes = str(b.notes, "notes");
     if (b.action_points !== undefined) p.action_points = actionPoints(b.action_points);
