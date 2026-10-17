@@ -459,13 +459,13 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   get("/meetings/:id", "any", async (c) => {
     const m = await c.store.one("meetings", { id: idV(c.params.id, "id") }); if (!m) throw notFound("Meeting not found");
-    const names = await staffNames(c.store); let att = (await c.store.find("meeting_attendance", { meeting_id: m.id })).map((a) => ({ ...a, staff_name: names.get(a.staff_id) }));
+    const names = await staffNames(c.store), types = new Map((await c.store.find("staff")).map((x) => [x.id, x.staff_type])); let att = (await c.store.find("meeting_attendance", { meeting_id: m.id })).map((a) => ({ ...a, staff_name: names.get(a.staff_id), staff_type: types.get(a.staff_id), instructor: types.get(a.staff_id) === "instructor" }));
     if (c.actor.role === "staff" && m.owner_staff_id !== c.actor.staffId && !(c.actor.pa && m.owner_staff_id == null)) { if (!att.some((a) => a.staff_id === c.actor.staffId)) throw forbid(); att = att.filter((a) => a.staff_id === c.actor.staffId); }
     return { ...m, attendance: att };
   });
   const syncParticipants = async (tx, meeting, ids) => {
     const existing = await tx.find("meeting_attendance", { meeting_id: meeting.id });
-    for (const id of ids) if (!existing.some((e) => e.staff_id === id)) { await adminOf(tx, id); await tx.insert("meeting_attendance", { meeting_id: meeting.id, staff_id: id }); }
+    for (const id of ids) if (!existing.some((e) => e.staff_id === id)) { await staffOf(tx, id); await tx.insert("meeting_attendance", { meeting_id: meeting.id, staff_id: id }); }
     for (const e of existing) if (!ids.includes(e.staff_id) && e.status === "PENDING") await tx.remove("meeting_attendance", { id: e.id });
   };
   const actionPoints = (v) => (Array.isArray(v) ? v : []).map((a) => ({ text: str(a.text, "action point text", { req: true }), assignee_ids: (a.assignee_ids || []).map((x) => idV(x, "assignee")), due_date: dateV(a.due_date, "action point due_date", false), priority: oneOf(a.priority, ["LOW", "MEDIUM", "HIGH"], "priority", "MEDIUM"), task_id: a.task_id || null }));
@@ -519,7 +519,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     if (isHead(c)) await needTeam({ ...c, store: tx }, list.map((r) => r.staff_id));
     const grace = (await P.getSettings(tx)).grace_minutes, etype = m.meeting_type === "MANDATORY" ? "MANDATORY_MEETING" : "MEETING", out = [];
     for (const r of list) {
-      const s = await adminOf(tx, r.staff_id); await P.assertEditable(tx, s.id, monthOf(m.meeting_date), "meeting attendance");
+      const s = await staffOf(tx, r.staff_id); if (!P.isAdminType(s)) continue; /* instructors are invited and notified but not scored here */ await P.assertEditable(tx, s.id, monthOf(m.meeting_date), "meeting attendance");
       const arrival = timeV(r.arrival_time, "arrival_time"); let status = oneOf(r.status, ["PRESENT", "LATE", "ABSENT", "EXCUSED"], "status"); const li = lateInfo(status, m.meeting_time, arrival, grace); status = li.status;
       const old = await tx.one("meeting_attendance", { meeting_id: m.id, staff_id: s.id });
       const row = await tx.upsert("meeting_attendance", { meeting_id: m.id, staff_id: s.id, required: old ? old.required : false, status, arrival_time: arrival, remark: str(r.remark, "remark"), recorded_by: c.actor.name, recorded_at: new Date().toISOString() }, ["meeting_id", "staff_id"]);

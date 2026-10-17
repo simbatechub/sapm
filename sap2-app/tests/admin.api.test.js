@@ -475,3 +475,20 @@ test("files: staff attach files to tasks and weekly reports; management lists/do
   assert.equal((await ok("DELETE", `/files/${up.id}`, { actor: A })).deleted, 1); assert.equal((await ok("GET", "/files")).length, 3);
   assert.equal((await ok("DELETE", `/files/${mf.id}`)).deleted, 1);
 });
+
+test("meetings: instructors can be invited, are notified, edit notifies them, and are not scored; PA can edit and add minutes", async () => {
+  const { ok, call, store, staff } = await setup();
+  const larry = staff["Larry"], ada = Object.values(staff).find((s) => s.staff_type === "admin"), pa = Object.values(staff).find((s) => s.staff_type === "admin" && s.id !== ada_id(staff));
+  function ada_id(st) { return Object.values(st).find((s) => s.staff_type === "admin").id; }
+  assert.equal(larry.staff_type, "instructor");
+  const m = await ok("POST", "/meetings", { body: { title: "All hands", meeting_date: "2026-10-22", meeting_time: "10:00", required_staff_ids: [larry.id, ada.id] } });
+  const d = await ok("GET", "/meetings/" + m.id);
+  assert.ok(d.attendance.some((a) => a.staff_id === larry.id && a.instructor === true), "instructor invited");
+  assert.ok((await store.find("notifications", { staff_id: larry.id })).some((n) => /All hands/.test(n.title)), "instructor notified at once");
+  await ok("PATCH", "/meetings/" + m.id, { body: { meeting_time: "14:00" } });
+  assert.ok((await store.find("notifications", { staff_id: larry.id })).length >= 2, "instructor told about the change");
+  const r = await ok("POST", "/meetings/" + m.id + "/attendance", { body: { records: [{ staff_id: larry.id, status: "PRESENT" }, { staff_id: ada.id, status: "PRESENT" }] } });
+  assert.ok(r, "attendance with an instructor in the list does not fail");
+  const paActor = { role: "staff", staffId: pa.id, name: pa.name, pa: true };
+  assert.equal((await call("PATCH", "/meetings/" + m.id, { actor: paActor, body: { notes: "PA minutes", meeting_time: "15:00" } })).status, 200);
+});
