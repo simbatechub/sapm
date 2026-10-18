@@ -531,3 +531,17 @@ test("meetings: type PRIVATE makes the meeting private and needs names", async (
   const g = await ok("PATCH", "/meetings/" + m.id, { body: { meeting_type: "GENERAL" } });
   assert.equal(g.is_private, false, "changing the type back makes it public");
 });
+
+test("weekly reports: PA reads everyone's reports and can reject but not approve; others cannot", async () => {
+  const { ok, call, staff } = await setup(); globalThis.__NOW = "2026-10-17T10:00:00Z";
+  const admins = Object.values(staff).filter((s) => s.staff_type === "admin"), [a, p, o] = admins;
+  const A = { role: "staff", staffId: a.id, name: a.name }, PA = { role: "staff", staffId: p.id, name: p.name, pa: true }, OTHER = { role: "staff", staffId: o.id, name: o.name };
+  const sub = await ok("POST", "/reports", { actor: A, body: { week_start: "2026-10-12", activities: "Edited videos", achievements: "5 posts", submit: true } });
+  assert.ok((await ok("GET", "/reports", { actor: PA })).some((r) => r.id === sub.id), "PA sees another staff member's report");
+  assert.equal((await ok("GET", "/reports", { actor: OTHER })).some((r) => r.id === sub.id), false, "ordinary staff do not");
+  assert.equal((await call("POST", `/reports/${sub.id}/review`, { actor: PA, body: { decision: "APPROVED" } })).status, 403, "PA cannot approve");
+  assert.equal((await call("POST", `/reports/${sub.id}/review`, { actor: OTHER, body: { decision: "REJECTED", comment: "x" } })).status, 403);
+  assert.equal((await call("POST", `/reports/${sub.id}/review`, { actor: PA, body: { decision: "REJECTED" } })).status, 400, "a comment is required");
+  const r = await ok("POST", `/reports/${sub.id}/review`, { actor: PA, body: { decision: "REJECTED", comment: "Add the numbers" } });
+  assert.equal(r.status, "REJECTED");
+});

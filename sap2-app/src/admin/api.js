@@ -587,7 +587,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
     let rows = await c.store.find("files", {}, { order: [["created_at", "desc"], ["id", "desc"]] });
     if (c.actor.role === "management") return rows;
     const me = c.actor.staffId, team = isHead(c) ? await teamIds(c) : null, mt = c.actor.pa ? new Map((await c.store.find("meetings")).map((m) => [m.id, m])) : null;
-    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && f.kind === "TASK") || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && (!priv(mt.get(f.meeting_id)) || mt.get(f.meeting_id).owner_staff_id === me)));
+    return rows.filter((f) => f.staff_id === me || (team && f.staff_id != null && team.has(f.staff_id)) || (mt && (f.kind === "TASK" || f.kind === "REPORT")) || (mt && f.kind === "MEETING" && mt.get(f.meeting_id) && (!priv(mt.get(f.meeting_id)) || mt.get(f.meeting_id).owner_staff_id === me)));
   }
   get("/files", "any", async (c) => {
     const q = c.query; let rows = await visibleFiles(c);
@@ -614,7 +614,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   // ======================= weekly reports =======================
   const reportText = ["activities", "tasks_completed", "tasks_pending", "challenges", "achievements", "evidence", "next_priorities"];
   get("/reports", "any", async (c) => {
-    const q = c.query, sid = who(c, q.staff_id, { optional: true }); const w = {}; if (sid) w.staff_id = sid; if (q.status) w.status = oneOf(q.status, ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"], "status");
+    const q = c.query, sid = c.actor.pa && !isHead(c) ? (q.staff_id ? idV(q.staff_id, "staff_id") : null) /* the Personal Assistant reads every staff member's reports */ : who(c, q.staff_id, { optional: true }); const w = {}; if (sid) w.staff_id = sid; if (q.status) w.status = oneOf(q.status, ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"], "status");
     if (q.office_id) w.office_id = Number(q.office_id); if (q.month) Object.assign(w, monthWhere(q.month, "week_start")); if (q.week_start) w.week_start = E.mondayOf(dateV(q.week_start, "week_start"));
     const names = await staffNames(c.store);
     const rf = await c.store.find("files", { kind: "REPORT" }, { order: [["created_at", "asc"]] });
@@ -644,7 +644,7 @@ function createApi({ store, today = P.todayStr, now = () => new Date(), ready = 
   });
   post("/reports", "any", (c) => saveReport(c, null));
   patch("/reports/:id", "any", (c) => saveReport(c, idV(c.params.id, "id")));
-  post("/reports/:id/review", "mgmt", async (c) => { let note = null; const out = await c.store.tx(async (tx) => {
+  post("/reports/:id/review", "any", async (c) => { let note = null; if (!(c.actor.role === "management" || c.actor.pa)) throw forbid("Management or the Personal Assistant only"); if (c.actor.role !== "management" && c.body.decision !== "REJECTED") throw forbid("The Personal Assistant can send a report back for changes but cannot approve it"); const out = await c.store.tx(async (tx) => {
     const r = await tx.one("weekly_reports", { id: idV(c.params.id, "id") }); if (!r) throw notFound("Report not found");
     if (r.status !== "SUBMITTED") throw conflict("Only a submitted report can be reviewed."); await P.assertEditable(tx, r.staff_id, monthOf(r.week_start), "report reviews");
     const decision = oneOf(c.body.decision, ["APPROVED", "REJECTED"], "decision"), comment = str(c.body.comment, "comment", { req: decision === "REJECTED" });

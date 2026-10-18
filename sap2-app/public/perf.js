@@ -467,11 +467,16 @@ ${ap.some(a => a.task_id) ? `<div class="pf-note">${ap.filter(a => a.task_id).le
     const b = { staff_id: +V('rst'), week_start: mondayOf(V('rwk')), submit: true }; RF.forEach(([k]) => b[k] = V('rf_' + k));
     try { await A('/reports', { method: 'POST', body: b }); mcl(); toast('Report recorded, awaiting review'); inv() } catch (err) { toast(err.message, 1) }
   }
+  function paReps() {
+    const f = X.pr || (X.pr = { status: '', q: '' }), d = need('reps:pa:' + f.status, () => A('/reports' + (f.status ? '?status=' + f.status : ''))); if (!d) return '<h1>Weekly reports</h1>' + loading(); if (bad(d)) return '<h1>Weekly reports</h1>' + errBox(d);
+    const rows = d.filter(r => r.status !== 'DRAFT' && (!f.q || (r.staff_name || '').toLowerCase().includes(f.q.toLowerCase())));
+    return `<h1>Weekly reports</h1><div class="p">Every staff member's weekly report. You can read them, download attached files, and send a report back for changes. Approval is done by management.</div><div class="row pf-noprint"><select onchange="PF.X.pr.status=this.value;render()">${[['', 'All submitted'], ['SUBMITTED', 'Waiting for review'], ['APPROVED', 'Approved'], ['REJECTED', 'Sent back']].map(([v, l]) => `<option value="${v}" ${v === f.status ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="Search by name" value="${e(f.q)}" onchange="PF.X.pr.q=this.value;render()" style="max-width:260px"></div>${tbl(['Week of', 'Staff', 'Status', 'Timeliness', 'Highlights', 'Review', ''], rows.map(r => `<tr><td>${r.week_start}</td><td>${e(r.staff_name)}</td><td>${statusBadge(r.status)}</td><td>${r.on_time ? '<span class="b sbS">On time</span>' : '<span class="b sbN">Late</span>'}</td><td class="wrap pf-det" style="min-width:220px">${e((r.achievements || r.activities || '').slice(0, 160))}${r.files && r.files.length ? `<div>${fbtns(r.files)}</div>` : ''}</td><td class="wrap pf-det">${e(r.review_comment || '')}</td><td><button class="btn" onclick="PF.openReport(${r.id})">Open</button></td></tr>`), 'No weekly reports for this filter.')}`;
+  }
   async function openReport(id) {
-    const d = (X.c[Object.keys(X.c).find(k => k.startsWith('reps:'))] || []).find(x => x.id === id); if (!d) return;
+    const d = Object.keys(X.c).filter(k => k.startsWith('reps:')).flatMap(k => Array.isArray(X.c[k]) ? X.c[k] : []).find(x => x.id === id); if (!d) return;
     MW(`<div class="row" style="justify-content:space-between;margin:0"><div><h2 style="font-size:26px">${e(d.staff_name)} — week of ${d.week_start}</h2><div>${statusBadge(d.status)} ${d.status !== 'DRAFT' ? (d.on_time ? '<span class="b sbS">On time</span>' : '<span class="b sbN">Late</span>') : ''}</div></div><button class="btn" onclick="mcl()">Close</button></div>
 ${RF.map(([k, l]) => `<h2 class="pf-h" style="font-size:17px">${l}</h2><div class="c wrap" style="white-space:pre-wrap">${e(d[k] || '—')}</div>`).join('')}
-${d.status === 'SUBMITTED' ? `<div class="pf-fg" style="margin-top:14px">${fg('rvc', 'Comment', '<textarea id="rvc"></textarea>')}</div><div class="row" style="justify-content:flex-end"><button class="btn" onclick="PF.doReport(${id},'REJECTED')">Reject (needs comment)</button><button class="btn pr" onclick="PF.doReport(${id},'APPROVED')">Approve</button></div>` : d.review_comment ? `<div class="fm">Review: ${e(d.review_comment)}</div>` : ''}`);
+${d.files && d.files.length ? `<h2 class="pf-h" style="font-size:17px">Attached files</h2><div class="c">${fbtns(d.files)}</div>` : ''}${d.status === 'SUBMITTED' ? `<div class="pf-fg" style="margin-top:14px">${fg('rvc', 'Comment', '<textarea id="rvc"></textarea>')}</div><div class="row" style="justify-content:flex-end"><button class="btn" onclick="PF.doReport(${id},'REJECTED')">Reject (needs comment)</button>${X.pa ? '' : `<button class="btn pr" onclick="PF.doReport(${id},'APPROVED')">Approve</button>`}</div>` : d.review_comment ? `<div class="fm">Review: ${e(d.review_comment)}</div>` : ''}`);
   }
   async function doReport(id, decision) { try { await A(`/reports/${id}/review`, { method: 'POST', body: { decision, comment: V('rvc') } }); mcl(); toast(decision === 'APPROVED' ? 'Report approved' : 'Report sent back'); inv() } catch (err) { toast(err.message, 1) } }
   function newAct() {
@@ -632,7 +637,7 @@ ${mfoot('Save minutes', `PF.paSaveMin(${id})`)}`);
   function portalExit() { logout() }
   const PT = [['me', 'My performance'], ['tasks', 'My tasks'], ['acts', 'My activities'], ['rep', 'Weekly report'], ['deliv', 'Deliverables'], ['notif', 'Notifications']];
   // Extra read-only screens for the Personal Assistant (she coordinates staff). Pay, bank and salary data are never sent to her.
-  const PA_T = [['pmeet', 'Meetings'], ['sched', 'Weekly schedule'], ['dir', 'All staff'], ['pperf', 'Staff performance'], ['atasks', 'All tasks'], ['pfiles', 'Files'], ['ann', 'Send announcement']];
+  const PA_T = [['pmeet', 'Meetings'], ['sched', 'Weekly schedule'], ['dir', 'All staff'], ['pperf', 'Staff performance'], ['atasks', 'All tasks'], ['preps', 'Weekly reports'], ['pfiles', 'Files'], ['ann', 'Send announcement']];
   const PA_CAMPS = ['Airport Road Campus', 'Ekehuan Campus', 'Ewah Campus', 'Ogida Campus', 'Ugbowo Campus'];
   function renderPortal() {
     const me0 = need('me:' + X.pm, () => A('/me?month=' + X.pm)); if (me0 && me0.pa) X.pa = true;
@@ -643,7 +648,7 @@ ${mfoot('Save minutes', `PF.paSaveMin(${id})`)}`);
     $('bt').innerHTML = tabs.filter(([k]) => ['me', 'tasks', 'rep', 'notif'].concat(X.pa ? ['pmeet', 'atasks'] : X.head ? ['htasks', 'hmeet'] : []).includes(k)).map(([k, l]) => `<button class="${X.pt === k ? 'on' : ''}" onclick="PF.X.pt='${k}';render()">${lab(k, l.replace('My ', '').replace('Notifications', 'Alerts').replace('Weekly schedule', 'Schedule').replace('All tasks', 'Tasks').replace('Team tasks', 'Team').replace('Team meetings', 'Meetings'))}</button>`).join('');
     if (!X.poll) { X.poll = setInterval(pollUnread, 60000); pollUnread() }
     let body;
-    if (X.pa && X.pt === 'pmeet') body = paMeet(); else if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'pfiles') body = fl(); else if (X.pa && X.pt === 'ann') body = paAnn();
+    if (X.pa && X.pt === 'pmeet') body = paMeet(); else if (X.pa && X.pt === 'sched') body = paSched(); else if (X.pa && X.pt === 'dir') body = paDir(); else if (X.pa && X.pt === 'pperf') body = paPerf(); else if (X.pa && X.pt === 'atasks') body = paTasks(); else if (X.pa && X.pt === 'preps') body = paReps(); else if (X.pa && X.pt === 'pfiles') body = fl(); else if (X.pa && X.pt === 'ann') body = paAnn();
     else if (X.head && X.pt === 'hperf') body = paPerf(); else if (X.head && X.pt === 'htasks') body = hTasks(); else if (X.head && X.pt === 'hmeet') body = hMeet(); else if (X.head && X.pt === 'ann') body = paAnn();
     else if (X.pt === 'tasks') body = ptasks(); else if (X.pt === 'acts') body = pacts(); else if (X.pt === 'rep') body = prep(); else if (X.pt === 'deliv') body = pdeliv(); else if (X.pt === 'notif') body = pnotif(); else body = pme();
     $('m').innerHTML = mh() + body;

@@ -241,6 +241,7 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await pa.locator("aside nav button", { hasText: "Staff performance" }).click(); await pa.waitForSelector("text=Pay amounts are not shown");
     await pa.locator("aside nav button", { hasText: "All tasks" }).click(); await pa.waitForSelector("text=Tasks assigned to every office");
     const tk = await pa.locator("main").innerText(); ok(/Newsletter draft/.test(tk) || /task\(s\)/.test(tk), "PA sees tasks across offices");
+    await pa.locator("aside nav button", { hasText: "Weekly reports" }).click(); await pa.waitForSelector("text=Approval is done by management"); ok(!(await pa.locator("button", { hasText: /^Approve$/ }).count()), "PA has no approve button");
     await pa.locator("aside nav button", { hasText: "Send announcement" }).click(); await pa.locator("button", { hasText: "Write an announcement" }).click();
     await pa.waitForSelector("#an_p"); ok((await pa.locator("#an_p option").count()) > 3, "one-person dropdown is filled");
     const PH = { "x-staff-id": "1", "x-office-code": CODES.offices["Personal Assistant"] };
