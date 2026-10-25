@@ -62,3 +62,8 @@ td.wrap,.wrap{white-space:normal}
   table{min-width:0;font-size:11px}
   body::before,body::after,#m::before{display:none!important}
 }
+
+.pf-prev{font-size:12px;color:var(--tx);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-repwrap{max-width:820px}
+.pf-rep{margin:10px 0}
+.pf-rt{font-size:14.5px;line-height:1.7;color:var(--tx);word-break:break-word}

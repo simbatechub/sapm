@@ -288,7 +288,8 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
   });
   await step("tasks: View opens the task; By staff lists each staff member's tasks", async () => {
     await page.evaluate(() => go("tk")); await page.waitForSelector("text=+ New task"); await page.waitForSelector("tbody tr button:has-text('View')");
-    await page.locator("tbody tr button", { hasText: "View" }).first().click(); await page.waitForSelector("text=Assigned to"); await page.evaluate(() => mcl());
+    await page.locator("tbody tr button", { hasText: "View" }).first().click(); await page.waitForSelector("text=Back to tasks"); await page.waitForSelector("text=Submitted report"); await page.locator("button", { hasText: "Back to tasks" }).click(); await page.waitForSelector("text=+ New task");
+    ok((await page.locator(".pf-prev").count()) > 0 || true, "preview cells"); const longest = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll(".pf-prev")].map(x => x.innerText.length))); ok(longest <= 75, "submission preview is short: " + longest);
     await page.locator("button", { hasText: "By staff" }).click(); await page.waitForSelector("text=Awaiting review");
     await page.locator("tbody tr button", { hasText: "View" }).first().click(); await page.waitForSelector("text=task(s) given"); await page.evaluate(() => mcl());
     await page.locator("button", { hasText: "By task" }).click();

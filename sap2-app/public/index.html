@@ -692,7 +692,7 @@
 
     /* ---------- navigation ---------- */
     const NV = [['dash', 'Dashboard'], ['att', 'Appearance Tracker'], ['hist', 'Appearance History'], ['staff', 'All Staff'], ['inst', 'Instructors'], ['adm', 'Administrative Staff'], ['ap', 'Administrative Performance'], ['tk', 'Tasks'], ['aa', 'Staff Attendance'], ['mt', 'Meetings'], ['wr', 'Weekly Reports'], ['fl', 'Files'], ['ok', 'Office KPIs'], ['pr2', 'Performance Reports'], ['sched', 'Weekly Schedule'], ['pay', 'Payroll'], ['ph', 'Payment History'], ['rep', 'Reports']];
-    function go(v) { view = v; render() }
+    function go(v) { if (window.PF && PF.X) PF.X.td = null; view = v; render() }
     function shell() {
       if (window.PF && PF.flags) PF.flags();
       $('nv').innerHTML = NV.filter(([k]) => k !== 'aa' || !window.PF || !PF.att || PF.att()).map(([k, l]) => `<button class="${view == k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('');
