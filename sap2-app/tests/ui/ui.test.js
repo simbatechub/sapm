@@ -132,11 +132,12 @@ const ok = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
     await page.locator("#mc button", { hasText: /^Close$/ }).click();
   });
   await step("weekly reports: review + activities", async () => {
-    await nav("Weekly Reports"); await waitText("Shipped 3 posts"); await shot("09-reports");
+    await nav("Weekly Reports"); await page.waitForSelector("#wkpick"); await waitText("Not submitted this week"); await page.fill("#wkpick", "2026-10-07"); await page.dispatchEvent("#wkpick", "change"); await waitText("Week of 2026-10-05 to 2026-10-11"); await waitText("Shipped 3 posts"); await page.fill("#wkpick", "2026-10-14"); await page.dispatchEvent("#wkpick", "change"); await waitText("Week of 2026-10-12 to 2026-10-18"); await waitText("Not submitted this week"); ok((await page.locator("main").innerText()).includes("Not submitted this week"), "shows who has not submitted"); await shot("09-reports");
     await page.locator("button", { hasText: "+ Record weekly report" }).click(); await page.selectOption("#rst", { label: "Isibor Blessing" }); await page.fill("#rwk", "2026-10-12"); await page.fill("#rf_activities", "Organised board papers"); await page.fill("#rf_achievements", "Board pack ready");
     await page.locator("#mc button", { hasText: "Submit report" }).click(); await waitText("Board pack ready");
     await page.locator("tr", { hasText: "Isibor" }).locator("button", { hasText: "Open" }).first().click(); await page.waitForSelector("#rvc"); await page.locator("#mc button", { hasText: /^Approve$/ }).click();
-    await page.waitForFunction(() => !document.querySelector(".mod.s"), null, { timeout: 4000 });
+    await page.waitForFunction(() => !document.querySelector(".mod.s"), null, { timeout: 4000 }).catch(async e => { throw new Error("modal stuck; toast=" + (await page.locator(".ts").innerText())) });
+    await page.fill("#wkpick", "2026-10-07"); await page.dispatchEvent("#wkpick", "change"); await waitText("Week of 2026-10-05 to 2026-10-11");
     await page.locator("tr", { hasText: "Adelana" }).locator("button", { hasText: "Open" }).first().click(); await page.waitForSelector("#rvc"); await page.locator("#mc button", { hasText: /^Approve$/ }).click(); await page.waitForTimeout(300);
     ok((await page.locator(".ts").innerText()).includes("finalized"), "locked month must refuse the review"); await page.evaluate(() => mcl());
     await page.locator(".pf-tabs button", { hasText: "Daily activities" }).click(); await waitText("Log activity");
