@@ -643,13 +643,36 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
   }
   const fbtns = fs => (fs || []).map(f => `<button class="pf-link" onclick="PF.dlFile(${f.id})" title="Download">&#128206; ${e(f.name)} <span class="pf-mu">(${fsize(f.size_bytes)})</span></button>`).join('<br>');
   const FKIND = { TASK: 'Task', REPORT: 'Weekly report', MEETING: 'Meeting', OTHER: 'Other' };
+  function fIcon(x) {
+    const n = String(x.name || '').toLowerCase(), m = String(x.mime || ''), ext = (n.split('.').pop() || '');
+    if (m.startsWith('image/')) return { t: 'IMG', c: '#8e44ad' }; if (m.startsWith('video/')) return { t: 'VID', c: '#c0392b' }; if (m.startsWith('audio/')) return { t: 'MP3', c: '#d35400' };
+    if (ext === 'pdf') return { t: 'PDF', c: '#e74c3c' }; if (/^docx?$/.test(ext)) return { t: 'DOC', c: '#2b6cb0' }; if (/^xlsx?$|^csv$/.test(ext)) return { t: ext === 'csv' ? 'CSV' : 'XLS', c: '#1e8449' };
+    if (/^pptx?$/.test(ext)) return { t: 'PPT', c: '#d35400' }; if (/^(zip|rar|7z)$/.test(ext)) return { t: 'ZIP', c: '#7f8c8d' }; if (ext === 'txt') return { t: 'TXT', c: '#566573' };
+    return { t: (ext || 'FILE').slice(0, 4).toUpperCase(), c: '#34495e' };
+  }
+  const canView = x => /^(image|video|audio)\//.test(x.mime || '') || x.mime === 'application/pdf' || /^text\//.test(x.mime || '');
+  async function viewFile(id) {
+    try {
+      const r = await fetch(BASE + '/api/admin/files/' + id + '/download', { headers: authH() }); if (!r.ok) throw new Error('Could not open the file');
+      const x = (X.fls || []).find(f => f.id === id) || {}, b = await r.blob(), url = URL.createObjectURL(new Blob([b], { type: x.mime || b.type }));
+      const w = window.open(url, '_blank'); if (!w) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click(); a.remove() } setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) { toast(err.message, 1) }
+  }
+  function fileInfo(id) {
+    const x = (X.fls || []).find(f => f.id === id); if (!x) return; const ic = fIcon(x);
+    const row = (l, v) => `<tr><td class="pf-mu" style="width:120px">${l}</td><td class="wrap">${v}</td></tr>`;
+    const forW = x.kind === 'TASK' ? e(x.task_title || 'Deleted task') : x.kind === 'REPORT' ? 'Weekly report, week of ' + String(x.report_week).slice(0, 10) : x.kind === 'MEETING' ? e(x.meeting_title || 'Deleted meeting') : '—';
+    M(`<div class="row" style="justify-content:space-between;margin:0"><div class="row" style="margin:0"><span class="pf-fic" style="background:${ic.c}">${ic.t}</span><div><h2 style="font-size:20px;word-break:break-word">${e(x.name)}</h2><div class="pf-note">${fsize(x.size_bytes)}</div></div></div><button class="btn" onclick="mcl()">Close</button></div>
+<table style="margin-top:12px"><tbody>${row('Type', FKIND[x.kind] || x.kind)}${row('Attached to', forW)}${row('Sent by', e(x.staff_name || x.uploaded_by || '—') + (x.staff_name && x.uploaded_by && x.uploaded_by !== x.staff_name ? ' <span class="pf-note">(uploaded by ' + e(x.uploaded_by) + ')</span>' : ''))}${row('Office', e(x.office || '—'))}${row('Date sent', new Date(x.created_at).toLocaleString([], { day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}${row('File type', e(x.mime || 'Unknown'))}${x.note ? row('Note', e(x.note)) : ''}</tbody></table>
+<div class="row" style="margin-top:14px">${canView(x) ? `<button class="btn" onclick="PF.viewFile(${x.id})">View</button>` : ''}<button class="btn pr" onclick="PF.dlFile(${x.id})">Download</button><button class="btn" onclick="mcl();PF.delFile(${x.id})">Delete</button></div>`);
+  }
   function fl() {
     const f = X.fl || (X.fl = { kind: '', q: '' }), key = 'files:' + f.kind + '|' + f.q;
     const d = need(key, () => A('/files?' + new URLSearchParams({ kind: f.kind, q: f.q }))); if (!d) return `<h1>Files</h1>` + loading(); if (bad(d)) return `<h1>Files</h1>` + errBox(d);
-    const total = d.reduce((a, x) => a + (x.size_bytes || 0), 0);
-    return `<h1>Files</h1><div class="p">Every file staff attach to tasks, weekly reports and meeting minutes, with who sent it and when. Click a file to download it.</div>
+    const total = d.reduce((a, x) => a + (x.size_bytes || 0), 0); X.fls = d;
+    return `<h1>Files</h1><div class="p">Every file staff attach to tasks, weekly reports and meeting minutes, with who sent it and when. Tap a file to see all its details, then view or download it.</div>
 <div class="row pf-noprint"><select onchange="PF.X.fl.kind=this.value;render()">${[['', 'All files'], ['TASK', 'Task files'], ['REPORT', 'Weekly report files'], ['MEETING', 'Meeting files'], ['OTHER', 'Other files']].map(([v, l]) => `<option value="${v}" ${v === f.kind ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="Search file, person, task or meeting" value="${e(f.q)}" onchange="PF.X.fl.q=this.value;render()" style="max-width:340px"><span class="pf-mu">${d.length} file(s) &middot; ${fsize(total)}</span></div>${(X.pa || !window.SP) ? `<div class="c pf-noprint"><b>Upload a file</b><div class="pf-note" style="margin:4px 0 8px">Add any file (document, video, CSV, ZIP, image). It is kept here with the date and your name.</div><input type="file" id="pafl" multiple> <button class="btn pr" onclick="PF.paUpload()">Upload</button></div>` : ''}
-${tbl(['Sent', 'File', 'Type', 'For', 'Sent by', 'Office', ''], d.map(x => `<tr><td>${new Date(x.created_at).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="wrap" style="min-width:180px"><button class="pf-link" onclick="PF.dlFile(${x.id})"><b>${e(x.name)}</b></button><div class="pf-note">${fsize(x.size_bytes)}${x.note ? ' · ' + e(x.note) : ''}</div></td><td><span class="b sbD">${FKIND[x.kind] || x.kind}</span></td><td class="wrap">${x.kind === 'TASK' ? e(x.task_title || 'Deleted task') : x.kind === 'REPORT' ? 'Week of ' + String(x.report_week).slice(0, 10) : x.kind === 'MEETING' ? e(x.meeting_title || 'Deleted meeting') : '—'}</td><td>${e(x.staff_name || x.uploaded_by || '—')}${x.staff_name && x.uploaded_by && x.uploaded_by !== x.staff_name ? `<div class="pf-note">uploaded by ${e(x.uploaded_by)}</div>` : ''}</td><td class="wrap">${e(x.office || '—')}</td><td><button class="btn" onclick="PF.dlFile(${x.id})">Download</button> <button class="btn" onclick="PF.delFile(${x.id})">Delete</button></td></tr>`), 'No files yet.')}`;
+${d.length ? `<div class="pf-fgrid">${d.map(x => `<button class="pf-fi" onclick="PF.fileInfo(${x.id})" title="${e(x.name)}"><span class="pf-fic" style="background:${fIcon(x).c}">${fIcon(x).t}</span><span class="pf-fn">${e(x.name)}</span><span class="pf-fm">${fsize(x.size_bytes)} &middot; ${new Date(x.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span></button>`).join('')}</div>` : '<div class="pf-note">No files yet.</div>'}`;
   }
   async function paUpload() { const l = [...(document.getElementById('pafl') || { files: [] }).files]; if (!l.length) return toast('Choose one or more files first', 1); try { const n = await upFiles(l, {}); toast(n + ' file(s) uploaded'); X.c = {}; render() } catch (err) { toast(err.message, 1); X.c = {}; render() } }
   async function delFile(id) { if (!confirm('Delete this file? This cannot be undone.')) return; try { await A('/files/' + id, { method: 'DELETE' }); toast('File deleted'); X.c = {}; render() } catch (err) { toast(err.message, 1) } }
@@ -887,7 +910,7 @@ ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.s
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,
     recordAtt, saveAtt, newMeeting, saveMeeting, editMeeting, saveMeetingEdit, openMeeting, saveMeetAtt, saveMinutes, newReport, saveReport, openReport, doReport, newAct, saveAct, reviewAct, saveKpiResult, csv, approvePay,
-    portalOn, portalExit, wkGo, deduct, doDeduct, closeTask, viewTask, viewStaffTasks, togglePriv, pickAll, syncAll, paUpload, tickGroup, dlFile, delFile, rUpload, paMin, paSaveMin, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
+    portalOn, portalExit, wkGo, deduct, doDeduct, closeTask, viewTask, viewStaffTasks, togglePriv, pickAll, syncAll, paUpload, tickGroup, dlFile, fileInfo, viewFile, delFile, rUpload, paMin, paSaveMin, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
     pm: () => X.pm, setMonthFromPayroll: m => { X.pm = m }
   };
 })();
