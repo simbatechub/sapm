@@ -545,3 +545,17 @@ test("weekly reports: PA reads everyone's reports and can reject but not approve
   const r = await ok("POST", `/reports/${sub.id}/review`, { actor: PA, body: { decision: "REJECTED", comment: "Add the numbers" } });
   assert.equal(r.status, "REJECTED");
 });
+
+test("scoreboard: management can deduct points from a month's score, with a reason", async () => {
+  const { ok, call, staff } = await setup(); globalThis.__TODAY = "2026-11-02";
+  const ada = staff["Adelana Victor"], M = "2026-10";
+  await ok("PUT", "/settings", { body: { settings: { weights: { task: 100, kpi: 0, attendance: 0, reports: 0, productivity: 0, teamwork: 0 } } } });
+  await ok("POST", `/performance/${ada.id}/adjust`, { body: { month: M, component: "task", value: 90, reason: "Test" } });
+  assert.equal((await ok("POST", `/performance/${ada.id}/calculate`, { body: { month: M } })).calc.final_score, 90);
+  assert.equal((await call("POST", `/performance/${ada.id}/adjust`, { body: { month: M, component: "deduction", value: 20 } })).status, 400, "reason required");
+  await ok("POST", `/performance/${ada.id}/adjust`, { body: { month: M, component: "deduction", value: 20, reason: "Management deduction" } });
+  const r = await ok("POST", `/performance/${ada.id}/calculate`, { body: { month: M } });
+  assert.equal(r.calc.final_score, 70); assert.equal(r.calc.deduction_points, 20);
+  await ok("POST", `/performance/${ada.id}/adjust`, { body: { month: M, component: "deduction", value: null, reason: "Removed" } });
+  assert.equal((await ok("POST", `/performance/${ada.id}/calculate`, { body: { month: M } })).calc.final_score, 90);
+});

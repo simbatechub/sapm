@@ -190,7 +190,7 @@ async function reopenReview(store, staffId, month, actor, reason) {
 
 // ---------------- inputs set by management ----------------
 async function setOverride(store, staffId, month, component, value, reason, actor) {
-  if (!E.COMPONENTS.includes(component)) throw bad("Unknown component");
+  if (!E.COMPONENTS.includes(component) && component !== "deduction") throw bad("Unknown component");
   if (!reason || !String(reason).trim()) throw bad("A reason is required for a score adjustment");
   return store.tx(async (tx) => {
     const staff = await tx.one("staff", { id: staffId }); if (!staff || !isAdminType(staff)) throw notFound("Administrative staff member not found");

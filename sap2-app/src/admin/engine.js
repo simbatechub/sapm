@@ -225,8 +225,9 @@ function calculate(data, settingsIn, today) {
   // score after 2 of 4 weeks is 50%, not 100%. Finished months are not scaled.
   const mWeeks = weeksOfMonth(month), started = mWeeks.filter((w) => w <= today).length;
   const progress = mWeeks.length && started < mWeeks.length ? Math.max(1, started) / mWeeks.length : 1;
-  const paceScore = wTotal ? r2(final) : 0; // quality of the work done so far (0-100), not scaled
-  final = wTotal ? r2(final * progress) : 0;
+  const ded = Math.max(0, num(overrides.deduction)); // points management has taken off this month's score
+  const paceScore = wTotal ? Math.max(0, r2(final - ded)) : 0; // quality of the work done so far (0-100), not scaled
+  final = wTotal ? Math.max(0, r2(final * progress - ded)) : 0;
   const missingComps = comps.filter((c) => c.raw_score === null && !c.hidden).map((c) => c.component);
   const warnings = [];
   if (!data.office) warnings.push("Staff member has no office assigned: KPI score cannot be calculated.");
@@ -242,7 +243,7 @@ function calculate(data, settingsIn, today) {
   const exit = wTotal > 0 && paceScore < below && priorLow.length >= settings.exit_review_consecutive - 1 && priorLow.every((s) => s !== null && s < below);
   return {
     staff_id: staff.id, month, office_id: data.office ? data.office.id : null, office: data.office ? data.office.name : null,
-    final_score: final, pace_score: paceScore, month_progress_pct: r2(progress * 100), weeks_elapsed: Math.min(started, mWeeks.length) || 0, weeks_in_month: mWeeks.length, ...pay, components: comps, incomplete, data_quality: { warnings, missing_components: missingComps, missing_kpis: k.details.missing || [] },
+    final_score: final, deduction_points: ded, pace_score: paceScore, month_progress_pct: r2(progress * 100), weeks_elapsed: Math.min(started, mWeeks.length) || 0, weeks_in_month: mWeeks.length, ...pay, components: comps, incomplete, data_quality: { warnings, missing_components: missingComps, missing_kpis: k.details.missing || [] },
     exit_review_required: exit, exit_review_label: exit ? "EXIT / MANAGEMENT REVIEW REQUIRED" : null,
     weights_total: COMPONENTS.reduce((x, c) => x + num(settings.weights[c]), 0),
   };
