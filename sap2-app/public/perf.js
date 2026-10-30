@@ -602,7 +602,7 @@ ${!sb ? '<div class="p">Loading performance…</div>' : bad(sb) ? errBox(sb) : '
 <div class="fm">Instructor pay = confirmed appearances × rate (unchanged). Administrative pay = base salary × the score-based percentage, and <b>only becomes payable after management approves it</b>. Calculated ≠ approved ≠ paid: only "Confirm Payroll" marks Paid.</div>
 ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized and waiting for approval. <button class="btn pr" onclick="PF.approvePay()">Approve recommended pay</button></div>` : ''}${unscored ? `<div class="fm">${unscored} administrative staff have no finalized performance score for ${mo}. <button class="pf-link" onclick="PF.X.tab='close';X.pm=mo;go('ap')">Open month closing</button></div>` : ''}
 <div class="gr">${stat('Total Payroll', fmt(T.t), 1)}${stat('Instructor Payroll', fmt(T.i))}${stat('Administrative Payroll', fmt(T.a))}${stat('Paid / Pending', fmt(T.p) + ' / ' + fmt(T.pend))}</div>
-<div class="row"><button class="btn pr" ${ok.length ? '' : 'disabled'} onclick="cfp()">Process Selected (${ok.length})</button></div>
+<div class="row"><button class="btn pr" ${ok.length ? '' : 'disabled'} onclick="cfp()">Process Selected (${ok.length})</button> <button class="btn" onclick="PF.payCsv()">Download payroll CSV</button></div><div class="pf-note">The CSV has each person's name, bank, full account number, pay record (appearances or salary, score, band, bonus), amount to pay now and totals, so you can pay from your bank.</div>
 <div class="tw"><table style="min-width:1150px"><tr><th></th><th>Staff</th><th>Type</th><th>Appts</th><th>Base salary / rate</th><th>Score</th><th>Recommended</th><th>Approved</th><th>Bonus (₦, edit)</th><th>Total payable</th><th>Actual paid</th><th>Status</th></tr>${T.R.map(r => {
       const adm = r.type !== 'Instructor';
       return `<tr><td><input type="checkbox" ${sel.has(r.k) ? 'checked' : ''} ${pd(r) || r.aw || r.amt == 0 ? 'disabled' : ''} onchange="tsel('${r.k}')"></td><td><b>${r.s.n}</b></td><td>${r.type}</td><td>${adm ? '—' : r.n}</td><td>${adm ? (r.bs == null ? '<span class="l">Not set</span>' : fmt(r.bs)) : fmt(r.rate)}</td>
@@ -610,6 +610,13 @@ ${awaiting ? `<div class="fm">${awaiting} administrative score(s) are finalized 
 <td><input type="number" min="0" step="1000" placeholder="0" value="${r.bonus || ''}" ${pd(r) ? 'disabled' : ''} style="width:100px" onchange="setB('${r.k}',this.value)"></td><td>${r.aw ? '<span class="pf-mu">' + fmt(r.amt) + ' (provisional)</span>' : fmt(r.amt)}</td><td>${r.actual == null ? '—' : fmt(r.actual)}</td>
 <td>${r.aw ? '<span class="b sbN">Awaiting approval</span>' : bd(pd(r) ? 'Paid' : r.amt ? 'Pending' : 'No amount', pd(r) ? 'Paid' : r.amt ? 'Pending' : 'Bad')}</td></tr>`
     }).join('')}</table></div>`;
+  }
+  async function payCsv() {
+    try {
+      const r = await fetch(BASE + '/api/payroll/export?month=' + mo, { headers: authH() });
+      if (!r.ok) { let j = null; try { j = await r.json() } catch (err) { } throw new Error((j && j.error) || 'Could not build the CSV') }
+      const url = URL.createObjectURL(await r.blob()), a = document.createElement('a'); a.href = url; a.download = 'payroll-' + mo + '.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); toast('Payroll CSV downloaded');
+    } catch (err) { toast(err.message, 1) }
   }
   async function approvePay() {
     let sb; try { sb = await A('/performance?month=' + mo) } catch (err) { return toast(err.message, 1) }
@@ -910,7 +917,7 @@ ${tbl(['When', 'Staff', 'Message', 'In app', 'Email', 'Phone', 'SMS'], d.items.s
     office, editKpi, saveKpi, editResp, saveResp, editOffice, saveOffice, finAll, closeMonth, doClose, reopenMonth, doReopenMonth, approveAll, saveSettings, resetSettings: () => { delete X.c.settings; render() },
     newTask, saveTask, review, doReview, submitFor, doSubmitFor, cancelTask, doCancel, newDeliv, saveDeliv, submitDeliv, doSubmitDeliv, reviewDeliv, doReviewDeliv,
     recordAtt, saveAtt, newMeeting, saveMeeting, editMeeting, saveMeetingEdit, openMeeting, saveMeetAtt, saveMinutes, newReport, saveReport, openReport, doReport, newAct, saveAct, reviewAct, saveKpiResult, csv, approvePay,
-    portalOn, portalExit, wkGo, deduct, doDeduct, closeTask, viewTask, viewStaffTasks, togglePriv, pickAll, syncAll, paUpload, tickGroup, dlFile, fileInfo, viewFile, delFile, rUpload, paMin, paSaveMin, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
+    portalOn, portalExit, wkGo, deduct, doDeduct, closeTask, viewTask, viewStaffTasks, togglePriv, pickAll, syncAll, paUpload, tickGroup, payCsv, dlFile, fileInfo, viewFile, delFile, rUpload, paMin, paSaveMin, hNewTask, hDoTask, hReview, hDoReview, hNewMeet, hDoMeet, hAtt, hDoAtt, pPush, pTestNotif, pReadAll, pOpenNotif, announce, doAnnounce, pollUnread, genCode, genAllOffices, copyCode, renderPortal, pStart, pSubmit, pDoSubmit, pNewAct, pSaveAct, pSaveRep, rwk, rfile, rdrop, pDelivSub, pDoDeliv, accessCode,
     pm: () => X.pm, setMonthFromPayroll: m => { X.pm = m }
   };
 })();

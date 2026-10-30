@@ -368,6 +368,28 @@ app.get(
   }),
 );
 
+// CSV for paying salaries from the bank: names, bank + full account numbers, each person's pay record, and totals.
+app.get(
+  "/api/payroll/export",
+  wrap(async (req, res) => {
+    const month = req.query.month || currentMonth();
+    if (!isMonth(month)) return res.status(400).json({ error: "month must be YYYY-MM" });
+    const rows = await payrollRows(month);
+    const bank = new Map((await query("SELECT id, bank, account_number, phone, email FROM staff")).rows.map((x) => [x.id, x]));
+    const q = (v) => { let t = String(v == null ? "" : v); if (/^[=+\-@\t\r]/.test(t) && !/^-?\d+(\.\d+)?$/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
+    const head = ["No", "Staff name", "Role", "Pay type", "Bank", "Account number", "Account name", "Phone", "Email", "Appearances", "Rate per appearance", "Base salary / pay", "Performance score %", "Band", "Recommended pay", "Approved pay", "Bonus", "Total payable", "Status", "Amount to pay now", "Narration", "Payment reference", "Amount already paid"];
+    let n = 0, now = 0, total = 0, paid = 0, missing = 0;
+    const body = rows.map((r) => {
+      const b = bank.get(r.staff_id) || {}, ins = r.pay_type === "instructor", due = r.status === "Pending" ? r.amount : 0;
+      n++; now += due; total += r.amount; if (r.status === "Paid") paid += r.actual_paid || r.amount; if (due > 0 && (!b.bank || !b.account_number)) missing++;
+      return [n, r.name, r.role || "", ins ? "Instructor (per appearance)" : "Administrative (monthly)", b.bank || "", b.account_number || "", r.name, b.phone || "", b.email || "", ins ? r.appearances : "", ins ? r.rate : "", r.base, ins ? "" : r.performance_score ?? "", ins ? "" : r.performance_band || "", ins ? "" : r.recommended_pay ?? "", ins ? "" : r.approved_pay ?? "", r.bonus, r.amount, r.status, due, "Salary " + month, r.reference || "", r.actual_paid ?? ""].map((v, i) => (i === 5 ? '"' + String(v).replace(/"/g, '""') + '"' : q(v))).join(",");
+    });
+    const sum = [[], ["SUMMARY for " + month], ["Staff on this sheet", n], ["Total payroll", total], ["Already paid", paid], ["Still to pay (Pending only)", now], ["Staff to pay with missing bank details", missing], ["Note", "Rows marked Awaiting approval are not payable yet; their Amount to pay now is 0."]].map((r) => r.map(q).join(","));
+    const csv = "\uFEFF" + [head.map(q).join(","), ...body, ...sum].join("\r\n") + "\r\n";
+    res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="payroll-${month}.csv"` }).send(csv);
+  }),
+);
+
 app.put(
   "/api/bonuses",
   wrap(async (req, res) => {
